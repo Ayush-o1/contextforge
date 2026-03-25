@@ -9,8 +9,15 @@ services:
       - redis
     volumes:
       - ./data:/app/data
+      - model-cache:/root/.cache
 
   redis:
     image: redis:7-alpine
     ports:
       - "6379:6379"
+    volumes:
+      - redis-data:/data
+
+volumes:
+  redis-data:
+  model-cache:

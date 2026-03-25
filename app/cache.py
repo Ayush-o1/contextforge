@@ -1,1 +1,123 @@
-# Phase 1 implementation
+"""Semantic cache orchestrator.
+
+Coordinates FAISS vector similarity search with Redis key-value storage
+to provide semantic caching for LLM responses.
+
+Flow:
+  1. Embed incoming prompt → vector
+  2. Search FAISS for similar vectors above threshold
+  3. On hit: fetch cached response from Redis → return
+  4. On miss: forward to upstream, store response in Redis + vector in FAISS
+"""
+
+from __future__ import annotations
+
+import json
+from dataclasses import dataclass
+
+import structlog
+from redis.asyncio import Redis
+
+from app.config import Settings
+from app.embedder import Embedder
+from app.vector_store import VectorStore
+
+logger = structlog.get_logger()
+
+
+@dataclass
+class CacheResult:
+    """Result of a cache lookup."""
+
+    hit: bool
+    response: dict | None = None
+    similarity_score: float = 0.0
+    cache_key: str = ""
+
+
+class SemanticCache:
+    """Orchestrates semantic cache lookups and stores."""
+
+    def __init__(
+        self,
+        embedder: Embedder,
+        vector_store: VectorStore,
+        redis: Redis,
+        settings: Settings,
+    ) -> None:
+        self._embedder = embedder
+        self._vector_store = vector_store
+        self._redis = redis
+        self._settings = settings
+
+    async def lookup(self, model: str, messages: list[dict]) -> CacheResult:
+        """Look up a semantically similar cached response.
+
+        Steps:
+          1. Embed the message content
+          2. Search FAISS for nearest neighbor
+          3. If similarity >= threshold, fetch from Redis
+          4. Return CacheResult with hit/miss info
+        """
+        text = self._embedder.messages_to_text(messages)
+        vector = self._embedder.embed(text)
+
+        # Search for nearest neighbor
+        results = self._vector_store.search(vector, k=1)
+
+        if not results:
+            logger.debug("cache.miss", reason="empty_index")
+            return CacheResult(hit=False)
+
+        cache_key, similarity = results[0]
+
+        if similarity < self._settings.similarity_threshold:
+            logger.debug("cache.miss", reason="below_threshold", similarity=similarity)
+            return CacheResult(hit=False, similarity_score=similarity)
+
+        # Fetch from Redis
+        cached_data = await self._redis.get(f"cache:{cache_key}")
+        if cached_data is None:
+            # Vector exists in FAISS but Redis entry expired (TTL)
+            logger.debug("cache.miss", reason="redis_expired", cache_key=cache_key)
+            return CacheResult(hit=False, similarity_score=similarity)
+
+        response = json.loads(cached_data)
+        logger.info("cache.hit", similarity=similarity, cache_key=cache_key)
+        return CacheResult(
+            hit=True,
+            response=response,
+            similarity_score=similarity,
+            cache_key=cache_key,
+        )
+
+    async def store(self, model: str, messages: list[dict], response: dict) -> str:
+        """Store a response in the semantic cache.
+
+        Steps:
+          1. Generate content hash as cache key
+          2. Embed the message content
+          3. Store response JSON in Redis with TTL
+          4. Add vector to FAISS index
+        """
+        cache_key = self._embedder.content_hash(model, messages)
+        text = self._embedder.messages_to_text(messages)
+        vector = self._embedder.embed(text)
+
+        # Store in Redis with TTL
+        await self._redis.set(
+            f"cache:{cache_key}",
+            json.dumps(response),
+            ex=self._settings.cache_ttl_seconds,
+        )
+
+        # Add to FAISS index
+        self._vector_store.add(vector, cache_key)
+
+        logger.info("cache.stored", cache_key=cache_key)
+        return cache_key
+
+    async def close(self) -> None:
+        """Persist FAISS index and close Redis connection."""
+        self._vector_store.persist()
+        await self._redis.close()

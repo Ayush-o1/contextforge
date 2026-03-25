@@ -8,10 +8,14 @@ from contextlib import asynccontextmanager
 import structlog
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, StreamingResponse
+from redis.asyncio import Redis
 
+from app.cache import SemanticCache
 from app.config import Settings, get_settings
+from app.embedder import Embedder
 from app.models import ChatCompletionRequest, HealthResponse
 from app.proxy import ProxyClient, UpstreamError
+from app.vector_store import VectorStore
 
 logger = structlog.get_logger()
 
@@ -21,13 +25,40 @@ async def lifespan(application: FastAPI) -> AsyncGenerator[None, None]:
     """Manage application lifecycle — initialize and teardown resources."""
     settings: Settings = get_settings()
 
+    # --- Proxy client ---
     proxy_client = ProxyClient(settings)
     application.state.proxy_client = proxy_client
     application.state.settings = settings
 
+    # --- Embedding model ---
+    embedder = Embedder()
+    application.state.embedder = embedder
+
+    # --- Vector store (FAISS) ---
+    vector_store = VectorStore(
+        dimension=embedder.dimension,
+        index_path=settings.faiss_index_path,
+    )
+    application.state.vector_store = vector_store
+
+    # --- Redis ---
+    redis_client = Redis.from_url(settings.redis_url, decode_responses=True)
+    application.state.redis = redis_client
+
+    # --- Semantic cache ---
+    cache = SemanticCache(
+        embedder=embedder,
+        vector_store=vector_store,
+        redis=redis_client,
+        settings=settings,
+    )
+    application.state.cache = cache
+
     logger.info("contextforge.started", log_level=settings.log_level)
     yield
 
+    # --- Shutdown ---
+    await cache.close()
     await proxy_client.close()
     logger.info("contextforge.shutdown")
 
@@ -35,7 +66,7 @@ async def lifespan(application: FastAPI) -> AsyncGenerator[None, None]:
 app = FastAPI(
     title="ContextForge",
     description="Proxy middleware for LLM-powered apps",
-    version="0.1.0",
+    version="0.2.0",
     lifespan=lifespan,
 )
 
@@ -56,12 +87,17 @@ async def health_check() -> HealthResponse:
 async def chat_completions(request: Request, body: ChatCompletionRequest):
     """OpenAI-compatible chat completions endpoint.
 
-    Validates the request, forwards it upstream to OpenAI, and returns
-    the response. Supports both streaming and non-streaming modes.
+    Pipeline:
+      1. Check semantic cache for a similar prompt
+      2. On cache hit → return cached response immediately
+      3. On cache miss → forward to upstream, cache the result
+    Streaming requests bypass cache (cannot cache partial responses).
     """
     proxy_client: ProxyClient = request.app.state.proxy_client
+    cache: SemanticCache = request.app.state.cache
 
     try:
+        # Streaming bypasses cache
         if body.stream:
             return StreamingResponse(
                 proxy_client.forward_stream(body),
@@ -73,8 +109,26 @@ async def chat_completions(request: Request, body: ChatCompletionRequest):
                 },
             )
 
+        # --- Semantic cache lookup ---
+        messages_dicts = [m.model_dump(exclude_none=True) for m in body.messages]
+        cache_result = await cache.lookup(body.model, messages_dicts)
+
+        if cache_result.hit:
+            return JSONResponse(
+                content=cache_result.response,
+                headers={"X-Cache": "HIT", "X-Similarity": str(cache_result.similarity_score)},
+            )
+
+        # --- Cache miss: forward upstream ---
         response_data = await proxy_client.forward(body)
-        return JSONResponse(content=response_data)
+
+        # Store in cache (non-blocking in the request path)
+        await cache.store(body.model, messages_dicts, response_data)
+
+        return JSONResponse(
+            content=response_data,
+            headers={"X-Cache": "MISS"},
+        )
 
     except UpstreamError as exc:
         logger.warning("upstream.error", status_code=exc.status_code, detail=exc.detail)

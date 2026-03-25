@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
+import numpy as np
 import pytest
 from fastapi.testclient import TestClient
 
+from app.cache import CacheResult, SemanticCache
 from app.config import Settings
 from app.main import app
 from app.proxy import ProxyClient
@@ -48,6 +50,8 @@ def test_settings() -> Settings:
         anthropic_api_key="sk-ant-test-123",
         openai_base_url="https://api.openai.com/v1",
         log_level="DEBUG",
+        similarity_threshold=0.92,
+        cache_ttl_seconds=86400,
     )
 
 
@@ -60,10 +64,42 @@ def mock_proxy_client() -> AsyncMock:
 
 
 @pytest.fixture
-def test_client(mock_proxy_client: AsyncMock, test_settings: Settings) -> TestClient:
-    """Return a FastAPI TestClient with mocked proxy."""
+def mock_cache() -> AsyncMock:
+    """Return a mocked SemanticCache."""
+    cache = AsyncMock(spec=SemanticCache)
+    cache.close = AsyncMock()
+    cache.lookup.return_value = CacheResult(hit=False)
+    cache.store.return_value = "mock_cache_key"
+    return cache
+
+
+@pytest.fixture
+def mock_embedder() -> MagicMock:
+    """Return a mocked Embedder with deterministic outputs."""
+    embedder = MagicMock()
+    embedder.dimension = 384
+    embedder.embed.return_value = np.random.randn(384).astype(np.float32)
+    embedder.content_hash.return_value = "test_hash_abc123"
+    embedder.messages_to_text.return_value = "user: Hello!"
+    return embedder
+
+
+@pytest.fixture
+def mock_redis() -> AsyncMock:
+    """Return a mocked async Redis client."""
+    redis = AsyncMock()
+    redis.get = AsyncMock(return_value=None)
+    redis.set = AsyncMock()
+    redis.close = AsyncMock()
+    return redis
+
+
+@pytest.fixture
+def test_client(mock_proxy_client: AsyncMock, mock_cache: AsyncMock, test_settings: Settings) -> TestClient:
+    """Return a FastAPI TestClient with mocked proxy and cache."""
     app.state.proxy_client = mock_proxy_client
     app.state.settings = test_settings
+    app.state.cache = mock_cache
 
     return TestClient(app, raise_server_exceptions=False)
 
