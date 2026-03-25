@@ -9,7 +9,7 @@ import structlog
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 from redis.asyncio import Redis
-
+from app.compressor import compress_context
 from app.cache import SemanticCache
 from app.config import Settings, get_settings
 from app.embedder import Embedder
@@ -17,6 +17,8 @@ from app.models import ChatCompletionRequest, HealthResponse
 from app.proxy import ProxyClient, UpstreamError
 from app.router import ModelRouter
 from app.vector_store import VectorStore
+
+from app.compressor import compress_context
 
 logger = structlog.get_logger()
 
@@ -106,6 +108,9 @@ async def chat_completions(request: Request, body: ChatCompletionRequest):
     cache: SemanticCache = request.app.state.cache
     router: ModelRouter = request.app.state.router
 
+    # --- Semantic cache lookup ---
+    cache_result = await cache.lookup(body.model, messages_dicts)
+
     try:
         messages_dicts = [m.model_dump(exclude_none=True) for m in body.messages]
 
@@ -127,8 +132,25 @@ async def chat_completions(request: Request, body: ChatCompletionRequest):
                 },
             )
 
+       # --- Context compression ---
+        no_compress = request.headers.get("x-contextforge-no-compress") == "true"
+        compression_ratio = 1.0
+        compressed_messages = messages_dicts
+
+        if not no_compress:
+            compressed_messages, compression_ratio = await compress_context(
+                messages_dicts,
+                body.model,
+                proxy_client,
+                request.app.state.settings,
+            )
+            # Update body.messages so forward() sends compressed messages upstream
+            body.messages = [
+                body.messages[0].__class__(**m) for m in compressed_messages
+            ]
+
         # --- Semantic cache lookup ---
-        cache_result = await cache.lookup(body.model, messages_dicts)
+        cache_result = await cache.lookup(body.model, compressed_messages)
 
         if cache_result.hit:
             return JSONResponse(
@@ -138,6 +160,8 @@ async def chat_completions(request: Request, body: ChatCompletionRequest):
                     "X-Similarity": str(cache_result.similarity_score),
                     "X-Model-Tier": routing.tier.value,
                     "X-Model-Selected": routing.model_selected,
+                    "X-Compressed": str(not no_compress),
+                    "X-Compression-Ratio": str(compression_ratio),
                 },
             )
 
@@ -145,7 +169,7 @@ async def chat_completions(request: Request, body: ChatCompletionRequest):
         response_data = await proxy_client.forward(body, model_override=routing.model_selected)
 
         # Store in cache
-        await cache.store(body.model, messages_dicts, response_data)
+        await cache.store(body.model, compressed_messages, response_data)
 
         return JSONResponse(
             content=response_data,
@@ -153,6 +177,8 @@ async def chat_completions(request: Request, body: ChatCompletionRequest):
                 "X-Cache": "MISS",
                 "X-Model-Tier": routing.tier.value,
                 "X-Model-Selected": routing.model_selected,
+                "X-Compressed": str(not no_compress),
+                "X-Compression-Ratio": str(compression_ratio),
             },
         )
 
@@ -168,3 +194,6 @@ async def chat_completions(request: Request, body: ChatCompletionRequest):
                 }
             },
         )
+    
+
+    #

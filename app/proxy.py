@@ -96,6 +96,22 @@ class ProxyClient:
                 detail=str(exc),
             ) from exc
 
+    async def simple_completion(self, model: str, prompt: str) -> str:
+        """Lightweight completion used internally by the compressor."""
+        try:
+            response = await self._client.chat.completions.create(
+                model=model,
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=500,
+                stream=False,
+            )
+            return response.choices[0].message.content
+        except APIError as exc:
+            raise UpstreamError(
+                status_code=exc.status_code or 500,
+                detail=str(exc),
+            ) from exc
+
     async def close(self) -> None:
         """Close the underlying HTTP client."""
         await self._client.close()
