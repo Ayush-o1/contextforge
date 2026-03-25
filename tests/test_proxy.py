@@ -123,7 +123,7 @@ class TestChatCompletionsStreaming:
     ):
         """Verify streaming returns SSE-formatted chunks."""
 
-        async def mock_stream(request):
+        async def mock_stream(request, model_override=None):
             for chunk in stream_chunks_fixture:
                 yield f"data: {json.dumps(chunk)}\n\n"
             yield "data: [DONE]\n\n"
@@ -159,7 +159,7 @@ class TestChatCompletionsStreaming:
     ):
         """Verify correct SSE headers are set."""
 
-        async def mock_stream(request):
+        async def mock_stream(request, model_override=None):
             for chunk in stream_chunks_fixture:
                 yield f"data: {json.dumps(chunk)}\n\n"
             yield "data: [DONE]\n\n"

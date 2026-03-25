@@ -1,6 +1,7 @@
 """Upstream LLM forwarding logic using the openai-python SDK.
 
 Handles both non-streaming and streaming (SSE) passthrough to OpenAI.
+Supports model override from the router.
 """
 
 from __future__ import annotations
@@ -32,11 +33,18 @@ class ProxyClient:
             base_url=settings.openai_base_url,
         )
 
-    async def forward(self, request: ChatCompletionRequest) -> dict:
-        """Forward a non-streaming request to OpenAI and return the raw response dict."""
+    async def forward(self, request: ChatCompletionRequest, model_override: str | None = None) -> dict:
+        """Forward a non-streaming request to OpenAI and return the raw response dict.
+
+        Args:
+            request: The validated chat completion request.
+            model_override: If provided, use this model instead of the request's model.
+        """
         try:
             payload = request.model_dump(exclude_none=True)
             payload["stream"] = False
+            if model_override:
+                payload["model"] = model_override
 
             response = await self._client.chat.completions.create(**payload)
             return response.model_dump()
@@ -53,11 +61,20 @@ class ProxyClient:
                 detail=str(exc),
             ) from exc
 
-    async def forward_stream(self, request: ChatCompletionRequest) -> AsyncGenerator[str, None]:
-        """Forward a streaming request and yield SSE-formatted strings."""
+    async def forward_stream(
+        self, request: ChatCompletionRequest, model_override: str | None = None
+    ) -> AsyncGenerator[str, None]:
+        """Forward a streaming request and yield SSE-formatted strings.
+
+        Args:
+            request: The validated chat completion request.
+            model_override: If provided, use this model instead of the request's model.
+        """
         try:
             payload = request.model_dump(exclude_none=True)
             payload["stream"] = True
+            if model_override:
+                payload["model"] = model_override
 
             stream = await self._client.chat.completions.create(**payload)
 

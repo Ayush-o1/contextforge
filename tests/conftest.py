@@ -14,6 +14,7 @@ from app.cache import CacheResult, SemanticCache
 from app.config import Settings
 from app.main import app
 from app.proxy import ProxyClient
+from app.router import ModelRouter, RoutingDecision, Tier
 
 FIXTURES_DIR = Path(__file__).parent.parent / "fixtures" / "openai_responses"
 
@@ -52,6 +53,7 @@ def test_settings() -> Settings:
         log_level="DEBUG",
         similarity_threshold=0.92,
         cache_ttl_seconds=86400,
+        preferred_provider="openai",
     )
 
 
@@ -71,6 +73,20 @@ def mock_cache() -> AsyncMock:
     cache.lookup.return_value = CacheResult(hit=False)
     cache.store.return_value = "mock_cache_key"
     return cache
+
+
+@pytest.fixture
+def mock_router() -> MagicMock:
+    """Return a mocked ModelRouter with a default routing decision."""
+    router = MagicMock(spec=ModelRouter)
+    router.route.return_value = RoutingDecision(
+        tier=Tier.SIMPLE,
+        model_requested="gpt-3.5-turbo",
+        model_selected="gpt-3.5-turbo",
+        reason="token_count:2<=200",
+        token_count=2,
+    )
+    return router
 
 
 @pytest.fixture
@@ -95,11 +111,14 @@ def mock_redis() -> AsyncMock:
 
 
 @pytest.fixture
-def test_client(mock_proxy_client: AsyncMock, mock_cache: AsyncMock, test_settings: Settings) -> TestClient:
-    """Return a FastAPI TestClient with mocked proxy and cache."""
+def test_client(
+    mock_proxy_client: AsyncMock, mock_cache: AsyncMock, mock_router: MagicMock, test_settings: Settings
+) -> TestClient:
+    """Return a FastAPI TestClient with mocked proxy, cache, and router."""
     app.state.proxy_client = mock_proxy_client
     app.state.settings = test_settings
     app.state.cache = mock_cache
+    app.state.router = mock_router
 
     return TestClient(app, raise_server_exceptions=False)
 
