@@ -9,16 +9,16 @@ import structlog
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 from redis.asyncio import Redis
-from app.compressor import compress_context
+
 from app.cache import SemanticCache
+from app.compressor import compress_context
 from app.config import Settings, get_settings
 from app.embedder import Embedder
 from app.models import ChatCompletionRequest, HealthResponse
 from app.proxy import ProxyClient, UpstreamError
 from app.router import ModelRouter
 from app.vector_store import VectorStore
-
-from app.compressor import compress_context
+from app import telemetry as tel
 
 logger = structlog.get_logger()
 
@@ -64,6 +64,9 @@ async def lifespan(application: FastAPI) -> AsyncGenerator[None, None]:
     )
     application.state.router = router
 
+    # --- Telemetry DB ---
+    tel.init_db()
+
     logger.info("contextforge.started", log_level=settings.log_level)
     yield
 
@@ -76,7 +79,7 @@ async def lifespan(application: FastAPI) -> AsyncGenerator[None, None]:
 app = FastAPI(
     title="ContextForge",
     description="Proxy middleware for LLM-powered apps",
-    version="0.3.0",
+    version="0.4.0",
     lifespan=lifespan,
 )
 
@@ -99,17 +102,15 @@ async def chat_completions(request: Request, body: ChatCompletionRequest):
 
     Pipeline:
       1. Route model (classify complexity → select tier)
-      2. Check semantic cache for a similar prompt
-      3. On cache hit → return cached response immediately
-      4. On cache miss → forward to upstream with routed model, cache the result
-    Streaming requests bypass cache (cannot cache partial responses).
+      2. Compress context if conversation is long
+      3. Check semantic cache for a similar prompt
+      4. On cache hit → return cached response immediately
+      5. On cache miss → forward to upstream, cache the result
+    Streaming requests bypass cache and compression.
     """
     proxy_client: ProxyClient = request.app.state.proxy_client
     cache: SemanticCache = request.app.state.cache
     router: ModelRouter = request.app.state.router
-
-    # --- Semantic cache lookup ---
-    cache_result = await cache.lookup(body.model, messages_dicts)
 
     try:
         messages_dicts = [m.model_dump(exclude_none=True) for m in body.messages]
@@ -118,7 +119,7 @@ async def chat_completions(request: Request, body: ChatCompletionRequest):
         override_model = request.headers.get("x-contextforge-model-override")
         routing = router.route(body.model, messages_dicts, override_model=override_model)
 
-        # Streaming bypasses cache but uses routed model
+        # Streaming bypasses cache and compression
         if body.stream:
             return StreamingResponse(
                 proxy_client.forward_stream(body, model_override=routing.model_selected),
@@ -132,7 +133,7 @@ async def chat_completions(request: Request, body: ChatCompletionRequest):
                 },
             )
 
-       # --- Context compression ---
+        # --- Context compression ---
         no_compress = request.headers.get("x-contextforge-no-compress") == "true"
         compression_ratio = 1.0
         compressed_messages = messages_dicts
@@ -153,6 +154,16 @@ async def chat_completions(request: Request, body: ChatCompletionRequest):
         cache_result = await cache.lookup(body.model, compressed_messages)
 
         if cache_result.hit:
+            # --- Telemetry: cache hit ---
+            request.state.model_requested = body.model
+            request.state.model_used = routing.model_selected
+            request.state.cache_hit = True
+            request.state.similarity_score = cache_result.similarity_score
+            request.state.prompt_tokens = 0
+            request.state.completion_tokens = 0
+            request.state.compressed = not no_compress
+            request.state.compression_ratio = compression_ratio
+
             return JSONResponse(
                 content=cache_result.response,
                 headers={
@@ -170,6 +181,17 @@ async def chat_completions(request: Request, body: ChatCompletionRequest):
 
         # Store in cache
         await cache.store(body.model, compressed_messages, response_data)
+
+        # --- Telemetry: cache miss ---
+        usage = response_data.get("usage") or {}
+        request.state.model_requested = body.model
+        request.state.model_used = routing.model_selected
+        request.state.cache_hit = False
+        request.state.similarity_score = None
+        request.state.prompt_tokens = usage.get("prompt_tokens", 0)
+        request.state.completion_tokens = usage.get("completion_tokens", 0)
+        request.state.compressed = not no_compress
+        request.state.compression_ratio = compression_ratio
 
         return JSONResponse(
             content=response_data,
@@ -194,6 +216,16 @@ async def chat_completions(request: Request, body: ChatCompletionRequest):
                 }
             },
         )
-    
 
-    #
+
+# ─────────────────── Telemetry Endpoints ─────────────────────────────────
+
+
+@app.get("/v1/telemetry")
+async def get_telemetry(limit: int = 50, offset: int = 0):
+    return {"records": tel.get_records(limit, offset), "limit": limit, "offset": offset}
+
+
+@app.get("/v1/telemetry/summary")
+async def get_telemetry_summary():
+    return tel.get_summary()

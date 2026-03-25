@@ -23,8 +23,10 @@ class Settings(BaseSettings):
     cache_ttl_seconds: int = 86400
 
     # --- Context Compression ---
-    context_compression_threshold_tokens: int = 2000
-    compression_min_turns: int = 6
+    compress_threshold: int = 2000
+    compress_keep_recent: int = 4
+    compress_min_turns: int = 6
+    compress_summary_model: str = "gpt-3.5-turbo"
 
     # --- Model Routing ---
     preferred_provider: str = "openai"
@@ -46,10 +48,3 @@ class Settings(BaseSettings):
 def get_settings() -> Settings:
     """Return a cached Settings instance."""
     return Settings()
-
-
-# Context compression
-compress_threshold: int = 2000
-compress_keep_recent: int = 4
-compress_min_turns: int = 6
-compress_summary_model: str = "gpt-3.5-turbo"
