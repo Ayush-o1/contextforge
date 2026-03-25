@@ -15,6 +15,7 @@ from app.config import Settings, get_settings
 from app.embedder import Embedder
 from app.models import ChatCompletionRequest, HealthResponse
 from app.proxy import ProxyClient, UpstreamError
+from app.router import ModelRouter
 from app.vector_store import VectorStore
 
 logger = structlog.get_logger()
@@ -54,6 +55,13 @@ async def lifespan(application: FastAPI) -> AsyncGenerator[None, None]:
     )
     application.state.cache = cache
 
+    # --- Model router ---
+    router = ModelRouter(
+        config_path="config/routing_rules.yaml",
+        preferred_provider=settings.preferred_provider,
+    )
+    application.state.router = router
+
     logger.info("contextforge.started", log_level=settings.log_level)
     yield
 
@@ -66,7 +74,7 @@ async def lifespan(application: FastAPI) -> AsyncGenerator[None, None]:
 app = FastAPI(
     title="ContextForge",
     description="Proxy middleware for LLM-powered apps",
-    version="0.2.0",
+    version="0.3.0",
     lifespan=lifespan,
 )
 
@@ -88,46 +96,64 @@ async def chat_completions(request: Request, body: ChatCompletionRequest):
     """OpenAI-compatible chat completions endpoint.
 
     Pipeline:
-      1. Check semantic cache for a similar prompt
-      2. On cache hit → return cached response immediately
-      3. On cache miss → forward to upstream, cache the result
+      1. Route model (classify complexity → select tier)
+      2. Check semantic cache for a similar prompt
+      3. On cache hit → return cached response immediately
+      4. On cache miss → forward to upstream with routed model, cache the result
     Streaming requests bypass cache (cannot cache partial responses).
     """
     proxy_client: ProxyClient = request.app.state.proxy_client
     cache: SemanticCache = request.app.state.cache
+    router: ModelRouter = request.app.state.router
 
     try:
-        # Streaming bypasses cache
+        messages_dicts = [m.model_dump(exclude_none=True) for m in body.messages]
+
+        # --- Model routing ---
+        override_model = request.headers.get("x-contextforge-model-override")
+        routing = router.route(body.model, messages_dicts, override_model=override_model)
+
+        # Streaming bypasses cache but uses routed model
         if body.stream:
             return StreamingResponse(
-                proxy_client.forward_stream(body),
+                proxy_client.forward_stream(body, model_override=routing.model_selected),
                 media_type="text/event-stream",
                 headers={
                     "Cache-Control": "no-cache",
                     "Connection": "keep-alive",
                     "X-Accel-Buffering": "no",
+                    "X-Model-Tier": routing.tier.value,
+                    "X-Model-Selected": routing.model_selected,
                 },
             )
 
         # --- Semantic cache lookup ---
-        messages_dicts = [m.model_dump(exclude_none=True) for m in body.messages]
         cache_result = await cache.lookup(body.model, messages_dicts)
 
         if cache_result.hit:
             return JSONResponse(
                 content=cache_result.response,
-                headers={"X-Cache": "HIT", "X-Similarity": str(cache_result.similarity_score)},
+                headers={
+                    "X-Cache": "HIT",
+                    "X-Similarity": str(cache_result.similarity_score),
+                    "X-Model-Tier": routing.tier.value,
+                    "X-Model-Selected": routing.model_selected,
+                },
             )
 
-        # --- Cache miss: forward upstream ---
-        response_data = await proxy_client.forward(body)
+        # --- Cache miss: forward upstream with routed model ---
+        response_data = await proxy_client.forward(body, model_override=routing.model_selected)
 
-        # Store in cache (non-blocking in the request path)
+        # Store in cache
         await cache.store(body.model, messages_dicts, response_data)
 
         return JSONResponse(
             content=response_data,
-            headers={"X-Cache": "MISS"},
+            headers={
+                "X-Cache": "MISS",
+                "X-Model-Tier": routing.tier.value,
+                "X-Model-Selected": routing.model_selected,
+            },
         )
 
     except UpstreamError as exc:

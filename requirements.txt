@@ -10,6 +10,7 @@ pydantic-settings==2.7.1
 # -- LLM SDKs --
 openai==1.59.7
 anthropic==0.42.0
+tiktoken==0.8.0
 
 # -- Embeddings --
 sentence-transformers==3.3.1
