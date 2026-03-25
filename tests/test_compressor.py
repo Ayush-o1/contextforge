@@ -1,6 +1,8 @@
-import pytest
 from unittest.mock import AsyncMock, MagicMock
-from app.compressor import count_tokens, compress_context
+
+import pytest
+
+from app.compressor import compress_context, count_tokens
 
 
 def make_messages(n: int) -> list[dict]:

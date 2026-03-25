@@ -77,7 +77,12 @@ async def compress_context(
         compressed = system_msgs + [summary_message] + recent_turns
         ratio = count_tokens(compressed, model) / total_tokens
 
-        logger.info(f"Context compressed: {total_tokens} → {count_tokens(compressed, model)} tokens (ratio: {ratio:.2f})")
+        compressed_tokens = count_tokens(compressed, model)
+        logger.info(
+            f"Context compressed: {total_tokens} → "
+            f"{compressed_tokens} tokens "
+            f"(ratio: {ratio:.2f})"
+        )
         return compressed, ratio
 
     except Exception as e:
