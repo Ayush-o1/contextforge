@@ -1,51 +1,146 @@
 # ContextForge Architecture
 
+> Last updated: v0.3.0 (Phases 0–3 complete)
+
+---
+
 ## System Overview
 
-ContextForge is a proxy middleware layer that sits between any LLM-powered application and upstream providers (OpenAI, Anthropic). It exposes an OpenAI-compatible REST API (`POST /v1/chat/completions`) so existing apps can point at it with zero code changes, then applies three optimizations before forwarding requests upstream:
+ContextForge is a proxy middleware that sits between LLM-powered apps and upstream providers (OpenAI, Anthropic). It exposes an OpenAI-compatible `POST /v1/chat/completions` endpoint so apps can connect with zero code changes. Behind the scenes, it applies optimizations to reduce cost and latency.
 
-1. **Semantic Caching** — Embeds the prompt, searches a FAISS vector index for near-duplicates, and returns a cached response from Redis on a hit (similarity ≥ threshold).
-2. **Context Compression** — Summarizes long conversation histories to reduce token usage while preserving meaning.
-3. **Model Routing** — Classifies prompt complexity and routes simple queries to cheaper models, complex queries to more capable ones.
+---
 
-Every request is tracked with per-request telemetry written to a local SQLite database.
+## What Is Built vs What Is Pending
+
+| Component | Status | Phase |
+|-----------|--------|-------|
+| FastAPI Gateway | ✅ Built | 1 |
+| OpenAI Proxy (passthrough) | ✅ Built | 1 |
+| Pydantic Request/Response Models | ✅ Built | 1 |
+| Streaming SSE Support | ✅ Built | 1 |
+| Error Propagation (4xx/5xx) | ✅ Built | 1 |
+| Embedding Service (all-MiniLM-L6-v2) | ✅ Built | 2 |
+| FAISS Vector Index (Flat IP) | ✅ Built | 2 |
+| Semantic Cache (FAISS + Redis) | ✅ Built | 2 |
+| Redis TTL for Cache Entries | ✅ Built | 2 |
+| FAISS/Redis Sync (read-through check) | ✅ Built | 2 |
+| Rule-Based Complexity Classifier | ✅ Built | 3 |
+| Model Tier Routing (OpenAI + Anthropic) | ✅ Built | 3 |
+| Override Header (X-ContextForge-Model-Override) | ✅ Built | 3 |
+| Context Compressor | ⏳ Stub | 4 |
+| Telemetry (SQLite) | ⏳ Stub | 5 |
+| Request Middleware | ⏳ Stub | 5 |
+| Adaptive Thresholds | ⏳ Not started | 6 |
+| Cache Invalidation API | ⏳ Not started | 6 |
+
+---
+
+## Request Pipeline (Current)
+
+This is the actual request flow as of v0.3.0:
+
+```
+  Client Request
+       │
+       ▼
+  ┌─────────────────┐
+  │  Validate JSON   │  Pydantic models (app/models.py)
+  └────────┬────────┘
+           │
+           ▼
+  ┌─────────────────┐
+  │  Router Classify │  Token count + keyword signals (app/router.py)
+  │  Select Model    │  SIMPLE → gpt-3.5-turbo, COMPLEX → gpt-4o
+  └────────┬────────┘
+           │
+           ▼
+  ┌─────────────────┐
+  │  Cache Lookup    │  Embed prompt → search FAISS → check Redis
+  │  (non-streaming) │  If stream=True, cache is SKIPPED
+  └────────┬────────┘
+           │
+      ┌────┴────┐
+      │         │
+   HIT ↓      MISS ↓
+      │         │
+      │    ┌────────────┐
+      │    │ Proxy Call  │  Forward to OpenAI/Anthropic with routed model
+      │    └────┬───────┘
+      │         │
+      │    ┌────────────┐
+      │    │ Cache Store │  Save response in Redis + embed in FAISS
+      │    └────┬───────┘
+      │         │
+      └────┬────┘
+           │
+           ▼
+  ┌─────────────────┐
+  │  Return Response │  + X-Model-Tier, X-Model-Selected, X-Cache-Hit headers
+  └─────────────────┘
+```
+
+> **Note:** Context Compression (Phase 4) will be inserted between Validate and Router Classify. The `X-ContextForge-No-Compress` header will allow skipping it.
 
 ---
 
 ## Component Diagram
 
 ```
-[ App / SDK ] → POST /v1/chat/completions
-     ↓
-[ ContextForge API Gateway ]
-     ↓
-┌───────────────────────────────┐
-│     Optimization Pipeline     │
-│  1. Semantic Cache Lookup     │
-│  2. Context Compressor        │
-│  3. Model Router              │
-└───────────────────────────────┘
-     ↓               ↗ (cache hit)
-[ Upstream LLM API ]   [ Redis / FAISS ]
-     ↓
-[ Telemetry → SQLite ]
+┌──────────────────┐     ┌────────────────────┐
+│   Client / SDK   │────▶│  FastAPI Gateway    │
+└──────────────────┘     │  (app/main.py)      │
+                         └──────┬─────────────┘
+                                │
+              ┌─────────────────┼──────────────────┐
+              │                 │                   │
+              ▼                 ▼                   ▼
+    ┌──────────────┐  ┌──────────────┐   ┌──────────────────┐
+    │ Model Router │  │ Semantic     │   │ Proxy Client     │
+    │ (router.py)  │  │ Cache        │   │ (proxy.py)       │
+    │              │  │ (cache.py)   │   │                  │
+    │ tiktoken +   │  │              │   │ openai-python    │
+    │ keywords     │  │ Embedder +   │   │ SDK              │
+    └──────────────┘  │ VectorStore  │   └────────┬─────────┘
+                      └──────┬───────┘            │
+                             │                    ▼
+                      ┌──────┴───────┐   ┌──────────────────┐
+                      │ FAISS Index  │   │ OpenAI / Anthropic│
+                      │ Redis Cache  │   │ API               │
+                      └──────────────┘   └──────────────────┘
 ```
 
 ---
 
 ## Layer Responsibilities
 
-| # | Layer               | Responsibility                                              |
-|---|---------------------|-------------------------------------------------------------|
-| 1 | API Gateway         | FastAPI — receives and validates OpenAI-compatible requests  |
-| 2 | Optimization Pipeline | Applies cache lookup, context compression, model routing in sequence |
-| 3 | Proxy Layer         | Forwards processed requests to OpenAI / Anthropic            |
-| 4 | Storage Layer       | Redis (cache KV + vector metadata), FAISS (vector index), SQLite (telemetry) |
-| 5 | Embedding Service   | Local sentence-transformers model (all-MiniLM-L6-v2)        |
+| # | Layer | Responsibility | Files |
+|---|-------|---------------|-------|
+| 1 | API Gateway | Receives and validates OpenAI-compatible requests | `app/main.py`, `app/models.py` |
+| 2 | Model Router | Classifies prompt complexity, selects model tier | `app/router.py`, `config/routing_rules.yaml` |
+| 3 | Semantic Cache | Embeds prompts, searches FAISS, manages Redis cache | `app/cache.py`, `app/embedder.py`, `app/vector_store.py` |
+| 4 | Proxy Layer | Forwards requests to upstream LLM providers | `app/proxy.py` |
+| 5 | Config | Loads environment variables, validates at startup | `app/config.py` |
+| 6 | *(Phase 4)* Compressor | Will compress long conversation histories | `app/compressor.py` (stub) |
+| 7 | *(Phase 5)* Telemetry | Will track per-request metrics in SQLite | `app/telemetry.py` (stub) |
 
 ---
 
-## Telemetry Schema (SQLite)
+## Architecture Decision Records
+
+All ADRs are documented in [DECISIONS.md](../DECISIONS.md). Summary:
+
+| ADR | Decision | Status |
+|-----|----------|--------|
+| ADR-001 | FAISS over Qdrant for MVP | ✅ Implemented (Phase 2) |
+| ADR-002 | Rule-based classifier first | ✅ Implemented (Phase 3) |
+| ADR-003 | SQLite for telemetry | ⏳ Pending implementation (Phase 5) |
+| ADR-004 | all-MiniLM-L6-v2 embeddings | ✅ Implemented (Phase 2) |
+
+---
+
+## Telemetry Schema (Phase 5)
+
+This schema is designed but not yet implemented:
 
 ```sql
 CREATE TABLE telemetry (
@@ -67,29 +162,17 @@ CREATE TABLE telemetry (
 
 ---
 
-## Key Architecture Decisions
-
-| ADR   | Decision                          | Rationale                                        |
-|-------|-----------------------------------|--------------------------------------------------|
-| ADR-001 | FAISS over Qdrant for MVP       | Zero infra overhead; upgrade path to Qdrant documented |
-| ADR-002 | Rule-based classifier first     | No labeled data required; ships faster than ML   |
-| ADR-003 | SQLite for telemetry            | No Postgres infra for solo dev MVP               |
-| ADR-004 | all-MiniLM-L6-v2 embeddings    | CPU-fast, 384-dim, sufficient for semantic similarity |
-
-Full ADR details are in [DECISIONS.md](../DECISIONS.md).
-
----
-
 ## Technology Stack
 
-- **Web Framework:** FastAPI (Python, async-first)
-- **Embedding Model:** sentence-transformers/all-MiniLM-L6-v2 (local, CPU-runnable)
-- **Vector Index:** FAISS (in-process, Flat for MVP)
-- **Cache Store:** Redis 7
-- **Telemetry DB:** SQLite (via SQLModel/SQLAlchemy)
-- **LLM SDKs:** openai-python + anthropic-python (version-pinned)
-- **Complexity Classifier:** Rule-based heuristics (token count + keywords)
-- **Config:** Pydantic Settings + .env
-- **Testing:** pytest + httpx + pytest-asyncio
-- **Containerization:** Docker + Docker Compose
-- **Logging:** structlog (structured JSON logs)
+| Component | Technology | Version |
+|-----------|-----------|---------|
+| Web Framework | FastAPI | 0.115.6 |
+| Embedding Model | all-MiniLM-L6-v2 | via sentence-transformers 3.3.1 |
+| Vector Index | FAISS (CPU) | 1.9.0.post1 |
+| Cache Store | Redis | 7 (Alpine) |
+| Token Counter | tiktoken | 0.8.0 |
+| LLM SDKs | openai-python / anthropic-python | 1.59.7 / 0.42.0 |
+| Config | Pydantic Settings | 2.7.1 |
+| Logging | structlog | 24.4.0 |
+| Testing | pytest + httpx | 8.3.4 / 0.28.1 |
+| Containerization | Docker + Docker Compose | — |
