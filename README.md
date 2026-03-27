@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="./Architecture.png" alt="ContextForge Architecture" width="100%"/>
+  <img src="./docs/assets/architecture.png" alt="ContextForge Architecture" width="100%"/>
 </p>
 
 <h1 align="center">ContextForge</h1>
@@ -38,9 +38,7 @@ You point your app at `localhost:8000` instead of `api.openai.com`. Same SDK, sa
 
 ## 🏗️ Architecture
 
-![ContextForge Architecture](./Architecture.png)
-
-![UX Blueprint](./contextForge-ux%20Blueprint.png)
+![ContextForge Architecture](./docs/assets/architecture.png)
 
 ---
 
@@ -71,6 +69,22 @@ flowchart LR
 6. **Cache store** — the response is embedded and stored in FAISS + Redis for future lookups.
 7. **Telemetry write** — every request is logged to SQLite with model, latency, cost estimate, cache hit status, and compression info.
 8. **Response returned** — your app receives a standard OpenAI response, enriched with `X-Cache-Hit`, `X-Model-Tier`, `X-Model-Selected`, `X-Compressed`, and `X-Compression-Ratio` headers.
+
+---
+
+## 📊 Dashboard Preview
+
+> The telemetry dashboard (coming in Phase 8) will visualize all request data collected by the telemetry layer.
+
+![Dashboard Preview](./docs/assets/dashboard-preview.png)
+
+---
+
+## 🎨 UX Blueprint
+
+The full UX design blueprint showing the planned interface:
+
+![UX Blueprint](./docs/assets/ux-blueprint.png)
 
 ---
 
@@ -479,6 +493,7 @@ A feature is "done" when:
 | [Decisions](DECISIONS.md) | Architecture Decision Records (ADR-001 to ADR-004) |
 | [Changelog](CHANGELOG.md) | Version history (v0.0.1 → v0.5.0) |
 | [Contributing](CONTRIBUTING.md) | Development setup, branch strategy, PR rules |
+| [Dashboard Preview](docs/dashboard.html) | Interactive HTML dashboard mockup for the telemetry UI |
 
 ---
 

@@ -1,0 +1,169 @@
+
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: var(--font-sans); background: var(--color-background-tertiary); }
+  .dash { padding: 1.5rem; }
+  .topbar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.5rem; }
+  .logo { font-size: 18px; font-weight: 500; color: var(--color-text-primary); }
+  .logo span { color: #378ADD; }
+  .badge { font-size: 12px; background: var(--color-background-success); color: var(--color-text-success); padding: 4px 10px; border-radius: 20px; }
+  .metrics { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 12px; margin-bottom: 1.5rem; }
+  .card { background: var(--color-background-primary); border: 0.5px solid var(--color-border-tertiary); border-radius: var(--border-radius-lg); padding: 1rem 1.25rem; }
+  .card .label { font-size: 12px; color: var(--color-text-secondary); margin-bottom: 6px; }
+  .card .value { font-size: 24px; font-weight: 500; color: var(--color-text-primary); }
+  .card .sub { font-size: 12px; color: var(--color-text-success); margin-top: 4px; }
+  .card .sub.warn { color: var(--color-text-warning); }
+  .row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 1.5rem; }
+  .section-title { font-size: 13px; font-weight: 500; color: var(--color-text-secondary); margin-bottom: 12px; }
+  .bar-row { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+  .bar-label { font-size: 12px; color: var(--color-text-secondary); width: 80px; }
+  .bar-track { flex: 1; height: 8px; background: var(--color-background-secondary); border-radius: 4px; overflow: hidden; }
+  .bar-fill { height: 100%; border-radius: 4px; }
+  .bar-val { font-size: 12px; color: var(--color-text-primary); width: 36px; text-align: right; }
+  .table-wrap { overflow: hidden; }
+  table { width: 100%; border-collapse: collapse; font-size: 12px; table-layout: fixed; }
+  th { font-size: 11px; font-weight: 500; color: var(--color-text-secondary); text-align: left; padding: 0 0 8px; border-bottom: 0.5px solid var(--color-border-tertiary); }
+  td { padding: 8px 0; border-bottom: 0.5px solid var(--color-border-tertiary); color: var(--color-text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .pill { display: inline-block; font-size: 11px; padding: 2px 8px; border-radius: 20px; }
+  .pill.hit { background: var(--color-background-success); color: var(--color-text-success); }
+  .pill.miss { background: var(--color-background-secondary); color: var(--color-text-secondary); }
+  .pill.simple { background: #EAF3DE; color: #3B6D11; }
+  .pill.complex { background: #FAECE7; color: #993C1D; }
+  .chart-area { position: relative; height: 120px; display: flex; align-items: flex-end; gap: 6px; padding-top: 8px; }
+  .bar-col { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; }
+  .bar-col .b { width: 100%; border-radius: 4px 4px 0 0; }
+  .bar-col .x { font-size: 10px; color: var(--color-text-secondary); }
+</style>
+<div class="dash">
+  <div class="topbar">
+    <div class="logo">Context<span>Forge</span> <span style="font-size:13px;color:var(--color-text-secondary);font-weight:400;">/ Dashboard</span></div>
+    <div class="badge">● Live</div>
+  </div>
+
+  <div class="metrics">
+    <div class="card">
+      <div class="label">Total Requests</div>
+      <div class="value">1,284</div>
+      <div class="sub">↑ 12% today</div>
+    </div>
+    <div class="card">
+      <div class="label">Cache Hit Rate</div>
+      <div class="value">38%</div>
+      <div class="sub">↑ 488 hits saved</div>
+    </div>
+    <div class="card">
+      <div class="label">Cost Saved</div>
+      <div class="value">$4.20</div>
+      <div class="sub">vs $6.80 without</div>
+    </div>
+    <div class="card">
+      <div class="label">Avg Latency</div>
+      <div class="value">320ms</div>
+      <div class="sub warn">p95: 890ms</div>
+    </div>
+  </div>
+
+  <div class="row">
+    <div class="card">
+      <div class="section-title">Requests (last 7 days)</div>
+      <div class="chart-area">
+        <div class="bar-col"><div class="b" style="height:55px;background:#B5D4F4;"></div><div class="x">Mon</div></div>
+        <div class="bar-col"><div class="b" style="height:70px;background:#B5D4F4;"></div><div class="x">Tue</div></div>
+        <div class="bar-col"><div class="b" style="height:45px;background:#B5D4F4;"></div><div class="x">Wed</div></div>
+        <div class="bar-col"><div class="b" style="height:90px;background:#378ADD;"></div><div class="x">Thu</div></div>
+        <div class="bar-col"><div class="b" style="height:65px;background:#B5D4F4;"></div><div class="x">Fri</div></div>
+        <div class="bar-col"><div class="b" style="height:40px;background:#B5D4F4;"></div><div class="x">Sat</div></div>
+        <div class="bar-col"><div class="b" style="height:80px;background:#B5D4F4;"></div><div class="x">Sun</div></div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="section-title">Model routing breakdown</div>
+      <div style="margin-top:8px;">
+        <div class="bar-row">
+          <div class="bar-label">gpt-3.5</div>
+          <div class="bar-track"><div class="bar-fill" style="width:72%;background:#5DCAA5;"></div></div>
+          <div class="bar-val">72%</div>
+        </div>
+        <div class="bar-row">
+          <div class="bar-label">gpt-4o</div>
+          <div class="bar-track"><div class="bar-fill" style="width:28%;background:#D85A30;"></div></div>
+          <div class="bar-val">28%</div>
+        </div>
+        <div class="bar-row">
+          <div class="bar-label">Cache hit</div>
+          <div class="bar-track"><div class="bar-fill" style="width:38%;background:#378ADD;"></div></div>
+          <div class="bar-val">38%</div>
+        </div>
+        <div class="bar-row">
+          <div class="bar-label">Compressed</div>
+          <div class="bar-track"><div class="bar-fill" style="width:15%;background:#7F77DD;"></div></div>
+          <div class="bar-val">15%</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card table-wrap">
+    <div class="section-title">Recent requests</div>
+    <table>
+      <thead>
+        <tr>
+          <th style="width:22%;">Request ID</th>
+          <th style="width:14%;">Model used</th>
+          <th style="width:13%;">Cache</th>
+          <th style="width:13%;">Tier</th>
+          <th style="width:13%;">Latency</th>
+          <th style="width:13%;">Cost</th>
+          <th style="width:12%;">Compressed</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td style="color:var(--color-text-secondary);">req_a1b2c3d4</td>
+          <td>gpt-3.5</td>
+          <td><span class="pill hit">HIT</span></td>
+          <td><span class="pill simple">simple</span></td>
+          <td>18ms</td>
+          <td>$0.000</td>
+          <td>No</td>
+        </tr>
+        <tr>
+          <td style="color:var(--color-text-secondary);">req_e5f6g7h8</td>
+          <td>gpt-4o</td>
+          <td><span class="pill miss">MISS</span></td>
+          <td><span class="pill complex">complex</span></td>
+          <td>1240ms</td>
+          <td>$0.024</td>
+          <td>Yes</td>
+        </tr>
+        <tr>
+          <td style="color:var(--color-text-secondary);">req_i9j0k1l2</td>
+          <td>gpt-3.5</td>
+          <td><span class="pill hit">HIT</span></td>
+          <td><span class="pill simple">simple</span></td>
+          <td>22ms</td>
+          <td>$0.000</td>
+          <td>No</td>
+        </tr>
+        <tr>
+          <td style="color:var(--color-text-secondary);">req_m3n4o5p6</td>
+          <td>gpt-3.5</td>
+          <td><span class="pill miss">MISS</span></td>
+          <td><span class="pill simple">simple</span></td>
+          <td>380ms</td>
+          <td>$0.002</td>
+          <td>No</td>
+        </tr>
+        <tr>
+          <td style="color:var(--color-text-secondary);">req_q7r8s9t0</td>
+          <td>gpt-4o</td>
+          <td><span class="pill miss">MISS</span></td>
+          <td><span class="pill complex">complex</span></td>
+          <td>980ms</td>
+          <td>$0.018</td>
+          <td>Yes</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
