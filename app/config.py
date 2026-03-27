@@ -1,5 +1,6 @@
 """Pydantic Settings configuration loaded from .env file."""
 from functools import lru_cache
+
 from pydantic_settings import BaseSettings
 
 
@@ -31,6 +32,15 @@ class Settings(BaseSettings):
     openai_base_url: str = "https://api.openai.com/v1"
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8", "extra": "ignore"}
+
+    # --- Property aliases for backward compatibility ---
+    @property
+    def context_compression_threshold_tokens(self) -> int:
+        return self.compress_threshold
+
+    @property
+    def compression_min_turns(self) -> int:
+        return self.compress_min_turns
 
 
 @lru_cache

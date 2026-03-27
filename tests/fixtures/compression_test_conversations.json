@@ -1,0 +1,66 @@
+[
+  {
+    "id": "short_conversation",
+    "description": "Short conversation below compression threshold",
+    "messages": [
+      {"role": "user", "content": "What is Python?"},
+      {"role": "assistant", "content": "Python is a high-level programming language."}
+    ],
+    "should_compress": false
+  },
+  {
+    "id": "long_conversation",
+    "description": "Long conversation above compression threshold with many turns",
+    "messages": [
+      {"role": "system", "content": "You are a helpful assistant."},
+      {"role": "user", "content": "I need help building a web application. Let's start with the backend architecture."},
+      {"role": "assistant", "content": "I'd recommend using FastAPI for the backend. It provides automatic OpenAPI documentation, async support, and excellent performance. Let's start by defining your data models and API endpoints."},
+      {"role": "user", "content": "That sounds great. What database should I use?"},
+      {"role": "assistant", "content": "For a web application, PostgreSQL is an excellent choice. It offers ACID compliance, JSON support, full-text search, and great scalability. You can use SQLAlchemy as the ORM with async support via asyncpg."},
+      {"role": "user", "content": "How should I handle authentication?"},
+      {"role": "assistant", "content": "I recommend using JWT tokens with OAuth2. FastAPI has built-in support for OAuth2 with Password flow. You can use the python-jose library for JWT encoding/decoding and passlib with bcrypt for password hashing. Store refresh tokens in the database and access tokens should be short-lived (15-30 minutes)."},
+      {"role": "user", "content": "What about the frontend?"},
+      {"role": "assistant", "content": "For the frontend, React with TypeScript is a solid choice. You can use Next.js for server-side rendering and routing. For state management, consider Zustand or React Query for server state. TailwindCSS works great for styling with utility-first approach."},
+      {"role": "user", "content": "Can you help me set up the project structure?"},
+      {"role": "assistant", "content": "Here's a recommended project structure: Create separate directories for api/, models/, services/, and utils/ in the backend. For the frontend, use the standard Next.js app directory structure with components/, hooks/, lib/, and types/ directories. Use Docker Compose for local development with services for the API, database, and Redis cache."},
+      {"role": "user", "content": "What about testing?"},
+      {"role": "assistant", "content": "For testing, use pytest for the backend with pytest-asyncio for async tests. Use httpx TestClient for API integration tests. For the frontend, use Jest and React Testing Library for unit tests, and Playwright or Cypress for end-to-end tests. Aim for 80% code coverage minimum."},
+      {"role": "user", "content": "How should I handle deployment?"},
+      {"role": "assistant", "content": "For deployment, containerize with Docker and use a CI/CD pipeline (GitHub Actions). Deploy to a cloud provider: AWS ECS/Fargate, Google Cloud Run, or Railway for simplicity. Use environment variables for configuration, implement health checks, and set up monitoring with Prometheus/Grafana or a managed service like Datadog."}
+    ],
+    "should_compress": true
+  },
+  {
+    "id": "system_message_only",
+    "description": "Conversation with only system message",
+    "messages": [
+      {"role": "system", "content": "You are a helpful coding assistant specializing in Python development."}
+    ],
+    "should_compress": false
+  },
+  {
+    "id": "few_turns_high_tokens",
+    "description": "Few turns but high token count - below min_turns threshold",
+    "messages": [
+      {"role": "user", "content": "Please analyze this long code and explain every line in detail with examples and best practices for each pattern used."},
+      {"role": "assistant", "content": "Let me break down the code line by line with detailed explanations, examples, and best practices for each pattern. This is a comprehensive code review that covers architecture patterns, design decisions, performance implications, security considerations, and maintainability aspects of each section of the provided codebase."}
+    ],
+    "should_compress": false
+  },
+  {
+    "id": "mixed_roles_conversation",
+    "description": "Conversation with mixed roles and system messages interspersed",
+    "messages": [
+      {"role": "system", "content": "You are a Python expert."},
+      {"role": "user", "content": "How do I implement a binary search tree?"},
+      {"role": "assistant", "content": "A BST can be implemented using a Node class with left and right children. The key property is that left children are less than the parent, and right children are greater."},
+      {"role": "user", "content": "Can you show me the insertion method?"},
+      {"role": "assistant", "content": "The insert method recursively traverses the tree, going left if the value is less than the current node, and right if greater, until it finds an empty spot."},
+      {"role": "user", "content": "What about deletion?"},
+      {"role": "assistant", "content": "Deletion has three cases: leaf node (just remove), node with one child (replace with child), and node with two children (replace with inorder successor or predecessor)."},
+      {"role": "user", "content": "And traversal methods?"},
+      {"role": "assistant", "content": "BST supports three main traversals: inorder (left-root-right, gives sorted order), preorder (root-left-right, useful for copying), and postorder (left-right-root, useful for deletion). Each can be implemented recursively or iteratively using a stack."}
+    ],
+    "should_compress": false
+  }
+]

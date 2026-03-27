@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import dataclasses
+import datetime
 import sqlite3
 import threading
 from contextlib import contextmanager
@@ -101,3 +103,47 @@ def get_summary() -> dict[str, Any]:
     summary["cache_hit_rate"] = round((summary["cache_hits"] or 0) / total, 4)
     summary["p95_latency_ms"] = p95_row["latency_ms"] if p95_row else None
     return summary
+
+
+# ─── OOP wrappers ─────────────────────────────────────────────────────────
+
+
+@dataclasses.dataclass
+class TelemetryRecord:
+    """Structured telemetry record that converts to a dict for write_record."""
+
+    request_id: str
+    timestamp: datetime.datetime
+    model_requested: str
+    model_used: str
+    cache_hit: bool
+    similarity_score: float
+    prompt_tokens: int
+    completion_tokens: int
+    estimated_cost_usd: float
+    latency_ms: float
+    compressed: bool
+    compression_ratio: float
+
+    def to_dict(self) -> dict[str, Any]:
+        return dataclasses.asdict(self)
+
+
+class TelemetryDB:
+    """OOP wrapper around the module-level telemetry functions."""
+
+    def init_db(self) -> None:
+        init_db()
+
+    def write(self, record: TelemetryRecord | dict[str, Any]) -> None:
+        if isinstance(record, TelemetryRecord):
+            write_record(record.to_dict())
+        else:
+            write_record(record)
+
+    def get_recent(self, limit: int = 50, offset: int = 0) -> list[dict]:
+        return get_records(limit, offset)
+
+    def get_summary(self) -> dict[str, Any]:
+        return get_summary()
+

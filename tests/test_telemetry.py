@@ -1,5 +1,6 @@
 # Phase 1 implementation
 import pytest
+
 from app.costs import estimate_cost
 from app.telemetry import get_records, get_summary, init_db, write_record
 

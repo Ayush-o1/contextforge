@@ -1,7 +1,10 @@
 """Context compressor — summarizes older turns to reduce token usage."""
 from __future__ import annotations
+
 import logging
+
 import tiktoken
+
 from app.config import Settings
 
 logger = logging.getLogger(__name__)
@@ -17,6 +20,24 @@ def count_tokens(messages: list[dict], model: str = "gpt-3.5-turbo") -> int:
     for msg in messages:
         total += len(enc.encode(msg.get("content", ""))) + 4  # +4 for role overhead
     return total
+
+
+def should_compress(
+    messages: list[dict],
+    model: str = "gpt-3.5-turbo",
+    settings: Settings | None = None,
+) -> bool:
+    """Return True if the conversation exceeds compression thresholds."""
+    if settings is None:
+        from app.config import get_settings
+
+        settings = get_settings()
+    total_tokens = count_tokens(messages, model)
+    if total_tokens <= settings.compress_threshold:
+        return False
+    if len(messages) <= settings.compress_min_turns:
+        return False
+    return True
 
 
 async def compress_context(
