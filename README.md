@@ -12,10 +12,10 @@
 
 <p align="center">
   <a href="https://github.com/aayush-1o/contextforge/actions/workflows/ci.yml"><img src="https://github.com/aayush-1o/contextforge/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
-  <img src="https://img.shields.io/badge/tests-44%20passed-brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-54%20passed-brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/python-3.11-blue" alt="Python 3.11">
   <img src="https://img.shields.io/badge/license-MIT-green" alt="License: MIT">
-  <img src="https://img.shields.io/badge/version-0.3.0-orange" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.5.0-orange" alt="Version">
 </p>
 
 ---
@@ -49,23 +49,28 @@ You point your app at `localhost:8000` instead of `api.openai.com`. Same SDK, sa
 ```mermaid
 flowchart LR
     A["🖥️ Your App"] -->|POST /v1/chat/completions| B["ContextForge Gateway"]
-    B --> C{"🔍 Semantic\nCache Lookup"}
-    C -->|"✅ HIT (≥92% similar)"| H["📤 Return Cached\nResponse"]
+    B --> X{"📦 Context\nCompressor"}
+    X --> C{"🔍 Semantic\nCache Lookup"}
+    C -->|"✅ HIT (≥92% similar)"| T1["📊 Telemetry Write"]
     C -->|"❌ MISS"| D["🧠 Model Router"]
     D -->|"SIMPLE"| E["gpt-3.5-turbo\nclaude-haiku"]
     D -->|"COMPLEX"| F["gpt-4o\nclaude-opus"]
     E --> G["☁️ Upstream API"]
     F --> G
     G --> I["💾 Cache Store\nFAISS + Redis"]
-    I --> J["📤 Return Response"]
+    I --> T2["📊 Telemetry Write"]
+    T1 --> H["📤 Return Response"]
+    T2 --> H
 ```
 
 1. **Your app sends a request** — exactly like it would to OpenAI. No SDK changes, no wrapper code.
-2. **Semantic cache lookup** — the prompt is embedded using all-MiniLM-L6-v2 and searched against FAISS. If a match is found at ≥92% cosine similarity, the cached response is returned in under 30ms.
-3. **Smart model routing** — on cache miss, a rule-based classifier analyzes token count and keyword signals. Simple prompts get routed to cheaper models; complex prompts go to the best.
-4. **Upstream call** — the request is forwarded to the selected model via the official SDK.
-5. **Cache store** — the response is embedded and stored in FAISS + Redis for future lookups.
-6. **Response returned** — your app receives a standard OpenAI response, enriched with `X-Cache-Hit`, `X-Model-Tier`, and `X-Model-Selected` headers.
+2. **Context compression** — if the conversation exceeds the token threshold (default: 2000) and minimum turns (default: 6), older turns are summarized by the LLM to reduce token usage. Skipped for short conversations or when `X-ContextForge-No-Compress: true` is set.
+3. **Semantic cache lookup** — the prompt is embedded using all-MiniLM-L6-v2 and searched against FAISS. If a match is found at ≥92% cosine similarity, the cached response is returned in under 30ms.
+4. **Smart model routing** — on cache miss, a rule-based classifier analyzes token count and keyword signals. Simple prompts get routed to cheaper models; complex prompts go to the best.
+5. **Upstream call** — the request is forwarded to the selected model via the official SDK.
+6. **Cache store** — the response is embedded and stored in FAISS + Redis for future lookups.
+7. **Telemetry write** — every request is logged to SQLite with model, latency, cost estimate, cache hit status, and compression info.
+8. **Response returned** — your app receives a standard OpenAI response, enriched with `X-Cache-Hit`, `X-Model-Tier`, `X-Model-Selected`, `X-Compressed`, and `X-Compression-Ratio` headers.
 
 ---
 
@@ -119,14 +124,14 @@ X-Model-Selected: gpt-4o    ← upgraded from gpt-3.5-turbo
 | 1 | Core Proxy (Passthrough) | ✅ Complete |
 | 2 | Semantic Cache | ✅ Complete |
 | 3 | Model Router | ✅ Complete |
-| 4 | Context Compressor | 🔄 In Progress |
-| 5 | Telemetry Layer | ⏳ Pending |
-| 6 | Adaptive Thresholds & Cache Invalidation | ⏳ Pending |
+| 4 | Context Compressor | ✅ Complete |
+| 5 | Telemetry Layer | ✅ Complete |
+| 6 | Adaptive Thresholds & Cache Invalidation | 🔄 In Progress |
 | 7 | Testing & Benchmarking Harness | ⏳ Pending |
 | 8 | Dockerization & Deployment | ⏳ Pending |
 | 9 | Final Documentation & Handoff | ⏳ Pending |
 
-> **`v0.3.0`** · 44/44 tests passing · ruff clean · 1000-prompt benchmark dataset
+> **`v0.5.0`** · 54/54 tests passing · ruff clean · 1000-prompt benchmark dataset
 
 ---
 
@@ -250,7 +255,7 @@ OpenAI-compatible chat completions endpoint. Supports both streaming and non-str
 | Header | Description |
 |--------|-------------|
 | `X-ContextForge-Model-Override` | Force a specific model, bypassing the router (e.g. `gpt-4o`) |
-| `X-ContextForge-No-Compress` | Skip context compression (Phase 4, not yet implemented) |
+| `X-ContextForge-No-Compress` | Set to `true` to skip context compression for this request |
 
 ### `GET /health`
 
@@ -260,7 +265,58 @@ Health check endpoint.
 ```json
 {
   "status": "ok",
-  "version": "0.3.0"
+  "version": "0.5.0"
+}
+```
+
+### `GET /v1/telemetry`
+
+Returns paginated telemetry records.
+
+**Query parameters:**
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `limit` | int | 50 | Maximum records to return |
+| `offset` | int | 0 | Number of records to skip |
+
+**Response:**
+```json
+{
+  "records": [
+    {
+      "request_id": "abc-123",
+      "timestamp": "2025-03-27T02:00:00",
+      "model_requested": "gpt-3.5-turbo",
+      "model_used": "gpt-3.5-turbo",
+      "cache_hit": false,
+      "similarity_score": 0.0,
+      "prompt_tokens": 14,
+      "completion_tokens": 8,
+      "estimated_cost_usd": 0.000029,
+      "latency_ms": 450.0,
+      "compressed": false,
+      "compression_ratio": 1.0
+    }
+  ],
+  "limit": 50,
+  "offset": 0
+}
+```
+
+### `GET /v1/telemetry/summary`
+
+Returns aggregated telemetry statistics.
+
+**Response:**
+```json
+{
+  "total_requests": 150,
+  "cache_hits": 42,
+  "avg_latency_ms": 320.5,
+  "total_cost_usd": 0.0245,
+  "avg_tokens": 35.2,
+  "cache_hit_rate": 0.28,
+  "p95_latency_ms": 890.0
 }
 ```
 
@@ -303,9 +359,10 @@ contextforge/
 │   ├── embedder.py         # Sentence-transformer embedding wrapper
 │   ├── vector_store.py     # FAISS index with thread-safe writes + persistence
 │   ├── router.py           # Rule-based complexity classifier (tiktoken + keywords)
-│   ├── compressor.py       # [Phase 4] Context compression — stub
-│   ├── telemetry.py        # [Phase 5] Per-request telemetry — stub
-│   └── middleware.py       # [Phase 5] Request wrapping middleware — stub
+│   ├── compressor.py       # Context compression logic (token counting + summarization)
+│   ├── costs.py            # Per-model cost estimation for telemetry
+│   ├── telemetry.py        # SQLite telemetry writer/reader (WAL mode)
+│   └── middleware.py       # Request wrapping middleware
 ├── config/
 │   └── routing_rules.yaml  # Token thresholds, keywords, model tier mappings
 ├── tests/
@@ -313,8 +370,8 @@ contextforge/
 │   ├── test_proxy.py       # 12 tests: health, completions, streaming, errors
 │   ├── test_cache.py       # 14 tests: VectorStore, SemanticCache, endpoints
 │   ├── test_router.py      # 18 tests: classifier, 1000-prompt accuracy, integration
-│   ├── test_compressor.py  # [Phase 4] Compression tests — stub
-│   └── test_telemetry.py   # [Phase 5] Telemetry tests — stub
+│   ├── test_compressor.py  # 5 tests: token counting, thresholds, fallback, system msgs
+│   └── test_telemetry.py   # 5 tests: write/read, summary, cost estimation, dedup
 ├── benchmarks/
 │   └── prompts_labeled.json  # 1000 labeled prompts for router accuracy testing
 ├── fixtures/
@@ -354,8 +411,10 @@ pytest tests/ -v
 | `test_proxy.py` | 12 | Health check, non-streaming completions, streaming SSE, error propagation (429/500/502) |
 | `test_cache.py` | 14 | VectorStore CRUD, SemanticCache hit/miss, Redis TTL, FAISS-Redis sync, endpoint integration |
 | `test_router.py` | 18 | Classifier unit tests, ≥85% accuracy on 1000-prompt labeled set, override header, endpoint integration |
+| `test_compressor.py` | 5 | Token counting, minimum turns check, compression reduces messages, error fallback, system message preservation |
+| `test_telemetry.py` | 5 | Write/read roundtrip, cache hit rate summary, cost estimation, duplicate request ID handling, total requests |
 
-> **All 44 tests pass without any live API calls or running services.**
+> **All 54 tests pass without any live API calls or running services.**
 
 ---
 
@@ -400,8 +459,8 @@ A feature is "done" when:
 | ✅ 1 | **Core Proxy** | OpenAI-compatible passthrough with streaming |
 | ✅ 2 | **Semantic Cache** | FAISS + Redis with cosine similarity matching |
 | ✅ 3 | **Model Router** | Rule-based classifier with tiktoken + keyword signals |
-| 🔄 4 | **Context Compressor** | Summarize long conversation histories to reduce token usage |
-| ⏳ 5 | **Telemetry Layer** | Per-request metrics in SQLite — model, latency, cost, cache hit |
+| ✅ 4 | **Context Compressor** | Summarize long conversation histories to reduce token usage |
+| ✅ 5 | **Telemetry Layer** | Per-request metrics in SQLite — model, latency, cost, cache hit |
 | ⏳ 6 | **Adaptive Thresholds** | Auto-tune similarity threshold + cache invalidation API |
 | ⏳ 7 | **Benchmarking Harness** | E2E benchmarks for cache hit rates, routing accuracy, latency p50/p95/p99 |
 | ⏳ 8 | **Production Docker** | Production images, health checks, volume management, optional GPU |
@@ -416,7 +475,7 @@ A feature is "done" when:
 | [Architecture](docs/ARCHITECTURE.md) | System design, component diagram, ADR status |
 | [Handoff Guide](docs/HANDOFF.md) | Onboarding for new developers — gotchas, file map, next steps |
 | [Decisions](DECISIONS.md) | Architecture Decision Records (ADR-001 to ADR-004) |
-| [Changelog](CHANGELOG.md) | Version history (v0.0.1 → v0.3.0) |
+| [Changelog](CHANGELOG.md) | Version history (v0.0.1 → v0.5.0) |
 | [Contributing](CONTRIBUTING.md) | Development setup, branch strategy, PR rules |
 
 ---

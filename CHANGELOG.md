@@ -6,6 +6,39 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ---
 
+## [v0.5.0] — 2026-03-27
+
+### Added — Phase 5: Telemetry Layer
+- SQLite-based per-request telemetry with WAL mode for concurrent writes
+- `GET /v1/telemetry` endpoint with pagination (limit, offset)
+- `GET /v1/telemetry/summary` endpoint with aggregated stats (cache hit rate, avg latency, total cost, p95 latency)
+- Per-model cost estimation via `app/costs.py`
+- Request middleware (`app/middleware.py`) for telemetry state tracking
+- `TelemetryDB` class and `TelemetryRecord` dataclass for OOP usage
+- 5 telemetry tests: write/read, summary, cost estimation, dedup, total requests
+
+### Fixed
+- Config property aliases for `context_compression_threshold_tokens` and `compression_min_turns`
+- 9 lint errors fixed (import sorting, trailing newlines across multiple files)
+
+---
+
+## [v0.4.0] — 2026-03-27
+
+### Added — Phase 4: Context Compressor
+- Context compression for long conversations via LLM summarization (`app/compressor.py`)
+- `count_tokens()` function using tiktoken for model-specific token counting
+- `should_compress()` convenience function for threshold checking
+- `compress_context()` async function that summarizes older turns while preserving system messages and recent turns
+- `X-ContextForge-No-Compress` request header to skip compression
+- `X-Compressed` and `X-Compression-Ratio` response headers
+- Configurable thresholds: `CONTEXT_COMPRESSION_THRESHOLD_TOKENS` (default: 2000) and `COMPRESSION_MIN_TURNS` (default: 6)
+- Silent fallback to uncompressed messages on any compression error
+- Compression test conversation fixtures (`tests/fixtures/compression_test_conversations.json`)
+- 5 compressor tests: token counting, thresholds, fallback, system message preservation
+
+---
+
 ## [v0.3.0] — 2025-03-25
 
 ### Added — Phase 3: Model Router

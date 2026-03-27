@@ -1,6 +1,6 @@
 # ContextForge Architecture
 
-> Last updated: v0.3.0 (Phases 0–3 complete)
+> Last updated: v0.5.0 (Phases 0–5 complete)
 
 ---
 
@@ -27,9 +27,10 @@ ContextForge is a proxy middleware that sits between LLM-powered apps and upstre
 | Rule-Based Complexity Classifier | ✅ Built | 3 |
 | Model Tier Routing (OpenAI + Anthropic) | ✅ Built | 3 |
 | Override Header (X-ContextForge-Model-Override) | ✅ Built | 3 |
-| Context Compressor | ⏳ Stub | 4 |
-| Telemetry (SQLite) | ⏳ Stub | 5 |
-| Request Middleware | ⏳ Stub | 5 |
+| Context Compressor | ✅ Built | 4 |
+| Telemetry (SQLite with WAL mode) | ✅ Built | 5 |
+| Request Middleware | ✅ Built | 5 |
+| Cost Estimation (per-model rates) | ✅ Built | 5 |
 | Adaptive Thresholds | ⏳ Not started | 6 |
 | Cache Invalidation API | ⏳ Not started | 6 |
 
@@ -37,7 +38,7 @@ ContextForge is a proxy middleware that sits between LLM-powered apps and upstre
 
 ## Request Pipeline (Current)
 
-This is the actual request flow as of v0.3.0:
+This is the actual request flow as of v0.5.0:
 
 ```
   Client Request
@@ -55,8 +56,14 @@ This is the actual request flow as of v0.3.0:
            │
            ▼
   ┌─────────────────┐
+  │  Compressor      │  If tokens > threshold AND turns > min_turns:
+  │  (non-streaming)  │  summarize older turns via LLM (app/compressor.py)
+  └────────┬────────┘
+           │
+           ▼
+  ┌─────────────────┐
   │  Cache Lookup    │  Embed prompt → search FAISS → check Redis
-  │  (non-streaming) │  If stream=True, cache is SKIPPED
+  │  (non-streaming) │  If stream=True, cache + compression SKIPPED
   └────────┬────────┘
            │
       ┌────┴────┐
@@ -75,11 +82,17 @@ This is the actual request flow as of v0.3.0:
            │
            ▼
   ┌─────────────────┐
-  │  Return Response │  + X-Model-Tier, X-Model-Selected, X-Cache-Hit headers
+  │ Telemetry Write │  Log model, latency, cost, cache hit (app/telemetry.py)
+  └────────┬────────┘
+           │
+           ▼
+  ┌─────────────────┐
+  │  Return Response │  + X-Model-Tier, X-Model-Selected, X-Cache-Hit,
+  │                 │    X-Compressed, X-Compression-Ratio headers
   └─────────────────┘
 ```
 
-> **Note:** Context Compression (Phase 4) will be inserted between Validate and Router Classify. The `X-ContextForge-No-Compress` header will allow skipping it.
+> **Note:** Adaptive Thresholds (Phase 6) will add auto-tuning of the cache similarity threshold and a `DELETE /v1/cache` endpoint for cache invalidation.
 
 ---
 
@@ -120,8 +133,10 @@ This is the actual request flow as of v0.3.0:
 | 3 | Semantic Cache | Embeds prompts, searches FAISS, manages Redis cache | `app/cache.py`, `app/embedder.py`, `app/vector_store.py` |
 | 4 | Proxy Layer | Forwards requests to upstream LLM providers | `app/proxy.py` |
 | 5 | Config | Loads environment variables, validates at startup | `app/config.py` |
-| 6 | *(Phase 4)* Compressor | Will compress long conversation histories | `app/compressor.py` (stub) |
-| 7 | *(Phase 5)* Telemetry | Will track per-request metrics in SQLite | `app/telemetry.py` (stub) |
+| 6 | Context Compressor | Summarizes long conversation histories to reduce token count | `app/compressor.py` |
+| 7 | Cost Estimator | Calculates per-model cost estimates | `app/costs.py` |
+| 8 | Telemetry Layer | Tracks per-request metrics in SQLite (WAL mode) | `app/telemetry.py` |
+| 9 | Request Middleware | Wraps requests with telemetry state | `app/middleware.py` |
 
 ---
 
@@ -133,18 +148,18 @@ All ADRs are documented in [DECISIONS.md](../DECISIONS.md). Summary:
 |-----|----------|--------|
 | ADR-001 | FAISS over Qdrant for MVP | ✅ Implemented (Phase 2) |
 | ADR-002 | Rule-based classifier first | ✅ Implemented (Phase 3) |
-| ADR-003 | SQLite for telemetry | ⏳ Pending implementation (Phase 5) |
+| ADR-003 | SQLite for telemetry | ✅ Implemented (Phase 5) |
 | ADR-004 | all-MiniLM-L6-v2 embeddings | ✅ Implemented (Phase 2) |
 
 ---
 
 ## Telemetry Schema (Phase 5)
 
-This schema is designed but not yet implemented:
+This schema is implemented in `app/telemetry.py` using SQLite with WAL mode for concurrent writes:
 
 ```sql
 CREATE TABLE telemetry (
-    id                  INTEGER PRIMARY KEY,
+    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
     request_id          TEXT UNIQUE,
     timestamp           DATETIME,
     model_requested     TEXT,
@@ -159,6 +174,10 @@ CREATE TABLE telemetry (
     compression_ratio   REAL
 );
 ```
+
+**Endpoints:**
+- `GET /v1/telemetry?limit=50&offset=0` — paginated records, newest first
+- `GET /v1/telemetry/summary` — aggregated stats (total requests, cache hit rate, avg latency, total cost, p95 latency)
 
 ---
 
