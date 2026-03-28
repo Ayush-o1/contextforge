@@ -67,14 +67,14 @@ flowchart LR
 4. **Smart model routing** — on cache miss, a rule-based classifier analyzes token count and keyword signals. Simple prompts get routed to cheaper models; complex prompts go to the best.
 5. **Upstream call** — the request is forwarded to the selected model via the official SDK.
 6. **Cache store** — the response is embedded and stored in FAISS + Redis for future lookups.
-7. **Telemetry write** — every request is logged to SQLite with model, latency, cost estimate, cache hit status, and compression info.
+7. **Telemetry write** — every request is logged to a local SQLite database with model, latency, cost estimate, cache hit status, and compression info. No data leaves your machine — all telemetry is stored in `./data/telemetry.db` and queryable via the `/v1/telemetry` API.
 8. **Response returned** — your app receives a standard OpenAI response, enriched with `X-Cache-Hit`, `X-Model-Tier`, `X-Model-Selected`, `X-Compressed`, and `X-Compression-Ratio` headers.
 
 ---
 
 ## 📊 Dashboard Preview
 
-> The telemetry dashboard (coming in Phase 8) will visualize all request data collected by the telemetry layer.
+ContextForge ships with a built-in telemetry dashboard that visualizes all request data collected by the telemetry layer. View it locally at `http://localhost:8000/dashboard` or open `docs/dashboard.html` directly.
 
 ![Dashboard Preview](./docs/assets/dashboard-preview.png)
 
