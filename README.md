@@ -176,7 +176,7 @@ docker compose up --build -d
 
 ```bash
 curl http://localhost:8000/health
-# → {"status":"ok","version":"0.5.0"}
+# → {"status":"ok","version":"0.7.0"}
 ```
 
 ### 4. Use It
@@ -285,7 +285,7 @@ Health check endpoint.
 ```json
 {
   "status": "ok",
-  "version": "0.5.0"
+  "version": "0.7.0"
 }
 ```
 
@@ -578,7 +578,7 @@ A feature is "done" when:
 | [Architecture](docs/ARCHITECTURE.md) | System design, component diagram, ADR status |
 | [Handoff Guide](docs/HANDOFF.md) | Onboarding for new developers — gotchas, file map, next steps |
 | [Decisions](DECISIONS.md) | Architecture Decision Records (ADR-001 to ADR-004) |
-| [Changelog](CHANGELOG.md) | Version history (v0.0.1 → v0.5.0) |
+| [Changelog](CHANGELOG.md) | Version history (v0.0.1 → v0.7.0) |
 | [Contributing](CONTRIBUTING.md) | Development setup, branch strategy, PR rules |
 | [Dashboard Preview](docs/dashboard.html) | Interactive HTML dashboard mockup for the telemetry UI |
 

@@ -1,6 +1,6 @@
 # ContextForge — Developer Handoff
 
-> For the next developer picking up from Phase 6 onwards.
+> For the next developer picking up from Phase 8 onwards.
 
 ---
 
@@ -8,27 +8,33 @@
 
 | Item | Value |
 |------|-------|
-| **Last completed phase** | Phase 5 (Telemetry Layer) |
-| **Version** | `v0.5.0` |
-| **Tests** | 54/54 passing |
+| **Last completed phase** | Phase 7 (Testing & Benchmarking Harness) |
+| **Version** | `v0.7.0` |
+| **Tests** | 84/84 passing |
 | **Lint** | ruff clean (zero errors) |
+| **Router accuracy** | 92.8% on 1000-prompt labeled dataset |
 | **Branch** | `main` has all phases merged |
-| **Tags** | `v0.1.0` (Phase 1), `v0.2.0` (Phase 2), `v0.3.0` (Phase 3), `v0.4.0` (Phase 4), `v0.5.0` (Phase 5) |
+| **Tags** | `v0.1.0`–`v0.7.0` (one per phase) |
 
 ---
 
 ## What Works Right Now
 
 1. **`POST /v1/chat/completions`** — Full OpenAI-compatible endpoint
-2. **Semantic caching** — FAISS + Redis, cosine similarity ≥0.92 threshold
-3. **Model routing** — Rule-based classifier routes simple→gpt-3.5-turbo, complex→gpt-4o
+2. **Semantic caching** — FAISS + Redis, cosine similarity with adaptive threshold (default 0.92)
+3. **Model routing** — Rule-based classifier routes simple→gpt-3.5-turbo, complex→gpt-4o (92.8% accuracy)
 4. **Context compression** — Long conversations automatically summarized to reduce token usage
 5. **Telemetry** — Per-request metrics logged to SQLite (model, latency, cost, cache hit, compression)
-6. **Streaming** — SSE passthrough works (but bypasses cache and compression)
-7. **Error propagation** — Upstream 4xx/5xx errors surface correctly to the caller
-8. **`GET /health`** — Returns `{"status":"ok","version":"0.5.0"}`
-9. **`GET /v1/telemetry`** — Paginated telemetry records
-10. **`GET /v1/telemetry/summary`** — Aggregated stats (cache hit rate, avg latency, total cost)
+6. **Adaptive thresholds** — Auto-tune cache similarity threshold based on hit rates
+7. **Cache invalidation** — `DELETE /v1/cache`, `DELETE /v1/cache/{key}`, `GET /v1/cache/stats`
+8. **Streaming** — SSE passthrough works (bypasses cache and compression)
+9. **Error propagation** — Upstream 4xx/5xx errors surface correctly to the caller
+10. **Benchmark suite** — 1000-prompt dataset, E2E benchmark runner with `--dry-run` mode for CI
+11. **`GET /health`** — Returns `{"status":"ok","version":"0.7.0"}`
+12. **`GET /v1/telemetry`** — Paginated telemetry records
+13. **`GET /v1/telemetry/summary`** — Aggregated stats (cache hit rate, avg latency, total cost)
+14. **`GET /v1/threshold`** — Current adaptive threshold info
+15. **`POST /v1/threshold/evaluate`** — Manually trigger threshold evaluation
 
 ---
 
@@ -83,9 +89,52 @@ Cost per token varies by model and changes over time. The `estimated_cost_usd` f
 
 Set `X-ContextForge-No-Compress: true` on any request to bypass compression entirely. Useful for debugging or when you want exact message control.
 
+### 11. Adaptive threshold has min/max caps
+
+The adaptive threshold self-tunes between `ADAPTIVE_THRESHOLD_MIN` (0.70) and `ADAPTIVE_THRESHOLD_MAX` (0.98). The step size is ±0.01 per evaluation. The hit rate thresholds are: >60% → raise, <20% → lower.
+
+### 12. Cache stats/flush gracefully handle Redis unavailability
+
+`GET /v1/cache/stats` and `DELETE /v1/cache` will return partial results (vector count but 0 Redis keys) if Redis is not running. Errors are logged but don't crash the endpoint.
+
+### 13. `datetime.utcnow()` deprecation warning
+
+`app/adaptive.py` uses `datetime.datetime.utcnow()` which triggers a DeprecationWarning on Python 3.12+. This is cosmetic and can be fixed by switching to `datetime.datetime.now(datetime.UTC)`.
+
 ---
 
-## Before Starting Phase 6
+## What Phase 8 Requires
+
+Phase 8 is **Dockerization & Deployment**. Here's what needs to be done:
+
+### Production Dockerfile
+- Multi-stage build (builder → runtime) to minimize image size
+- Non-root user for security
+- `HEALTHCHECK` instruction pointing to `/health`
+- Pin base image (e.g., `python:3.11-slim-bookworm`)
+
+### docker-compose.yml Updates
+- Health checks for both app and Redis services
+- Volume mounts for SQLite persistence (`./data/telemetry.db`)
+- Volume mounts for FAISS index persistence (`./data/faiss.index`, `./data/faiss.index.idmap`)
+- Named volumes for Redis data persistence
+- Restart policies (`unless-stopped`)
+- Environment variable passthrough from `.env`
+
+### Smoke Test
+- `docker compose up --build -d` must succeed from a fresh clone
+- `curl http://localhost:8000/health` must return `{"status":"ok","version":"0.7.0"}`
+- The Quick Start section in README must work end-to-end
+
+### Verification
+- Build succeeds without errors
+- Container starts and health check passes
+- Data persists across container restarts (SQLite, FAISS)
+- Redis connects properly between containers
+
+---
+
+## Before Starting Phase 8
 
 1. **Clone and verify:**
    ```bash
@@ -93,12 +142,12 @@ Set `X-ContextForge-No-Compress: true` on any request to bypass compression enti
    cd contextforge
    python -m venv .venv && source .venv/bin/activate
    pip install -r requirements.txt
-   pytest tests/ -v   # should be 54/54
+   PYTHONPATH=. pytest tests/ -v   # should be 84/84
    ```
 
 2. **Create your branch:**
    ```bash
-   git checkout -b phase/6-adaptive-thresholds
+   git checkout -b phase/8-dockerization
    ```
 
 3. **Set up `.env`:**
@@ -109,13 +158,11 @@ Set `X-ContextForge-No-Compress: true` on any request to bypass compression enti
 
 ---
 
-## Roadmap: Phases 6–9
+## Roadmap: Phases 8–9
 
 | Phase | Feature | One-Line Description |
 |-------|---------|---------------------|
-| **6** | Adaptive Thresholds | Auto-tune cache similarity threshold based on hit rates; add `DELETE /v1/cache` invalidation endpoint. |
-| **7** | Benchmarking Harness | End-to-end benchmark suite: cache hit rates, routing accuracy, latency p50/p95/p99, cost savings. |
-| **8** | Dockerization | Production-ready Docker images with health checks, volume management, and optional GPU support. |
+| **8** | Dockerization | Production-ready Docker images with health checks, volume management, and multi-stage builds. |
 | **9** | Final Handoff | Complete API docs, deployment guide, architecture diagrams, and contributor onboarding. |
 
 ---
@@ -124,18 +171,23 @@ Set `X-ContextForge-No-Compress: true` on any request to bypass compression enti
 
 | File | What It Does | You'll Touch It When... |
 |------|-------------|------------------------|
-| `app/main.py` | FastAPI app + lifespan + endpoint | Adding new middleware or pipeline steps |
+| `app/main.py` | FastAPI app + lifespan + all endpoints | Adding new endpoints or pipeline steps |
 | `app/proxy.py` | Sends requests to OpenAI/Anthropic | Adding Anthropic adapter or changing SDK usage |
-| `app/cache.py` | Orchestrates FAISS + Redis lookups | Changing cache behavior or adding invalidation |
+| `app/cache.py` | Orchestrates FAISS + Redis lookups | Changing cache behavior or invalidation |
 | `app/router.py` | Classifies prompts, picks models | Adding new classification rules or ML classifier |
 | `app/compressor.py` | Summarizes older turns to reduce tokens | Adjusting compression strategy or thresholds |
 | `app/telemetry.py` | SQLite telemetry writer/reader | Adding new metrics or changing aggregation |
+| `app/adaptive.py` | Adaptive threshold auto-tuning | Changing threshold strategy or evaluation window |
 | `app/costs.py` | Per-model cost estimation | Adding new model pricing or updating rates |
 | `app/middleware.py` | Request wrapping middleware | Adding new request-level state or timing |
 | `app/config.py` | Loads `.env` into typed Python config | Adding new environment variables |
 | `app/models.py` | Pydantic schemas for API | Changing request/response format |
 | `tests/conftest.py` | Shared test fixtures | Adding new mock services |
 | `config/routing_rules.yaml` | Keyword lists, token thresholds | Tuning routing behavior |
+| `benchmarks/run.py` | E2E benchmark runner | Adding new benchmark types |
+| `benchmarks/benchmark_utils.py` | Paraphrase, latency stats, accuracy | Extending benchmark utilities |
+| `Dockerfile` | Container image definition | Phase 8: multi-stage build, non-root user |
+| `docker-compose.yml` | Service orchestration | Phase 8: health checks, volume mounts |
 
 ---
 
@@ -148,4 +200,7 @@ Set `X-ContextForge-No-Compress: true` on any request to bypass compression enti
 | `test_router.py` | 18 | Classifier unit (10), 1000-prompt accuracy (3), dataset validation (2), endpoint (3) |
 | `test_compressor.py` | 5 | Token counting, min turns check, compression reduces messages, error fallback, system msg preservation |
 | `test_telemetry.py` | 5 | Write/read roundtrip, cache hit rate summary, cost estimation, duplicate ID handling, total requests |
-| **Total** | **54** | All pass without live API calls or running services |
+| `test_adaptive.py` | 8 | Threshold raise/lower/unchanged, min/max caps, DB write, GET/POST endpoint schemas |
+| `test_cache_invalidation.py` | 7 | VectorStore flush, cache invalidate/flush/stats, idempotent flush, endpoint schemas |
+| `test_benchmarks.py` | 15 | Paraphrase, latency stats (p50/p95/p99), routing accuracy, confusion matrix, JSON serialization |
+| **Total** | **84** | All pass without live API calls or running services |

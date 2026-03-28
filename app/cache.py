@@ -136,7 +136,11 @@ class SemanticCache:
         Returns True if the key existed and was removed.
         """
         redis_key = f"cache:{key}"
-        deleted = await self._redis.delete(redis_key)
+        deleted = 0
+        try:
+            deleted = await self._redis.delete(redis_key)
+        except Exception:
+            logger.warning("cache.invalidate.redis_error", cache_key=key)
         vector_removed = self._vector_store.remove_by_key(key)
         logger.info("cache.invalidated", cache_key=key, redis_deleted=deleted, vector_removed=vector_removed)
         return bool(deleted) or vector_removed
@@ -150,14 +154,17 @@ class SemanticCache:
 
         # Delete all Redis keys with the cache: prefix
         redis_keys_cleared = 0
-        cursor = 0
-        while True:
-            cursor, keys = await self._redis.scan(cursor=cursor, match="cache:*", count=100)
-            if keys:
-                redis_keys_cleared += len(keys)
-                await self._redis.delete(*keys)
-            if cursor == 0:
-                break
+        try:
+            cursor = 0
+            while True:
+                cursor, keys = await self._redis.scan(cursor=cursor, match="cache:*", count=100)
+                if keys:
+                    redis_keys_cleared += len(keys)
+                    await self._redis.delete(*keys)
+                if cursor == 0:
+                    break
+        except Exception:
+            logger.warning("cache.flush.redis_error")
 
         logger.info("cache.flushed", vectors_cleared=vectors_cleared, redis_keys_cleared=redis_keys_cleared)
         return {"vectors_cleared": vectors_cleared, "redis_keys_cleared": redis_keys_cleared}
@@ -170,16 +177,22 @@ class SemanticCache:
         total_vectors = self._vector_store.size
 
         redis_keys = 0
-        cursor = 0
-        while True:
-            cursor, keys = await self._redis.scan(cursor=cursor, match="cache:*", count=100)
-            redis_keys += len(keys)
-            if cursor == 0:
-                break
+        try:
+            cursor = 0
+            while True:
+                cursor, keys = await self._redis.scan(cursor=cursor, match="cache:*", count=100)
+                redis_keys += len(keys)
+                if cursor == 0:
+                    break
+        except Exception:
+            logger.warning("cache.stats.redis_unavailable")
 
         return {"total_vectors": total_vectors, "redis_keys": redis_keys}
 
     async def close(self) -> None:
         """Persist FAISS index and close Redis connection."""
         self._vector_store.persist()
-        await self._redis.close()
+        try:
+            await self._redis.close()
+        except Exception:
+            pass

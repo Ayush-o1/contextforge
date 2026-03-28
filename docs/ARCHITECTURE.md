@@ -1,6 +1,6 @@
 # ContextForge Architecture
 
-> Last updated: v0.5.0 (Phases 0–5 complete)
+> Last updated: v0.7.0 (Phases 0–7 complete)
 
 ---
 
@@ -31,14 +31,20 @@ ContextForge is a proxy middleware that sits between LLM-powered apps and upstre
 | Telemetry (SQLite with WAL mode) | ✅ Built | 5 |
 | Request Middleware | ✅ Built | 5 |
 | Cost Estimation (per-model rates) | ✅ Built | 5 |
-| Adaptive Thresholds | ⏳ Not started | 6 |
-| Cache Invalidation API | ⏳ Not started | 6 |
+| Adaptive Similarity Thresholds | ✅ Built | 6 |
+| Cache Invalidation API | ✅ Built | 6 |
+| Cache Stats Endpoint | ✅ Built | 6 |
+| 1000-Prompt Benchmark Dataset | ✅ Built | 7 |
+| E2E Benchmark Runner | ✅ Built | 7 |
+| Benchmark Utilities (paraphrase, latency stats) | ✅ Built | 7 |
+| Production Docker | ⏳ Pending | 8 |
+| Final Documentation & Handoff | ⏳ Pending | 9 |
 
 ---
 
 ## Request Pipeline (Current)
 
-This is the actual request flow as of v0.5.0:
+This is the actual request flow as of v0.7.0:
 
 ```
   Client Request
@@ -63,7 +69,8 @@ This is the actual request flow as of v0.5.0:
            ▼
   ┌─────────────────┐
   │  Cache Lookup    │  Embed prompt → search FAISS → check Redis
-  │  (non-streaming) │  If stream=True, cache + compression SKIPPED
+  │  (non-streaming) │  Uses adaptive threshold (auto-tuned from telemetry)
+  │                  │  If stream=True, cache + compression SKIPPED
   └────────┬────────┘
            │
       ┌────┴────┐
@@ -87,12 +94,10 @@ This is the actual request flow as of v0.5.0:
            │
            ▼
   ┌─────────────────┐
-  │  Return Response │  + X-Model-Tier, X-Model-Selected, X-Cache-Hit,
+  │  Return Response │  + X-Model-Tier, X-Model-Selected, X-Cache,
   │                 │    X-Compressed, X-Compression-Ratio headers
   └─────────────────┘
 ```
-
-> **Note:** Adaptive Thresholds (Phase 6) will add auto-tuning of the cache similarity threshold and a `DELETE /v1/cache` endpoint for cache invalidation.
 
 ---
 
@@ -120,6 +125,13 @@ This is the actual request flow as of v0.5.0:
                       │ FAISS Index  │   │ OpenAI / Anthropic│
                       │ Redis Cache  │   │ API               │
                       └──────────────┘   └──────────────────┘
+
+    ┌──────────────┐   ┌──────────────────┐
+    │ Adaptive     │   │ Benchmark Runner │
+    │ Threshold    │   │ (benchmarks/     │
+    │ Manager      │   │  run.py)         │
+    │ (adaptive.py)│   │                  │
+    └──────────────┘   └──────────────────┘
 ```
 
 ---
@@ -131,12 +143,14 @@ This is the actual request flow as of v0.5.0:
 | 1 | API Gateway | Receives and validates OpenAI-compatible requests | `app/main.py`, `app/models.py` |
 | 2 | Model Router | Classifies prompt complexity, selects model tier | `app/router.py`, `config/routing_rules.yaml` |
 | 3 | Semantic Cache | Embeds prompts, searches FAISS, manages Redis cache | `app/cache.py`, `app/embedder.py`, `app/vector_store.py` |
-| 4 | Proxy Layer | Forwards requests to upstream LLM providers | `app/proxy.py` |
-| 5 | Config | Loads environment variables, validates at startup | `app/config.py` |
-| 6 | Context Compressor | Summarizes long conversation histories to reduce token count | `app/compressor.py` |
-| 7 | Cost Estimator | Calculates per-model cost estimates | `app/costs.py` |
-| 8 | Telemetry Layer | Tracks per-request metrics in SQLite (WAL mode) | `app/telemetry.py` |
-| 9 | Request Middleware | Wraps requests with telemetry state | `app/middleware.py` |
+| 4 | Context Compressor | Summarizes long conversation histories to reduce token count | `app/compressor.py` |
+| 5 | Proxy Layer | Forwards requests to upstream LLM providers | `app/proxy.py` |
+| 6 | Telemetry Layer | Tracks per-request metrics in SQLite (WAL mode) | `app/telemetry.py`, `app/costs.py` |
+| 7 | Request Middleware | Wraps requests with telemetry state | `app/middleware.py` |
+| 8 | Adaptive Threshold Manager | Auto-tunes similarity threshold from cache hit rates | `app/adaptive.py` |
+| 9 | Cache Invalidation | Flush/invalidate cache entries, stats endpoint | `app/cache.py` (methods), `app/main.py` (endpoints) |
+| 10 | Benchmark Suite | E2E benchmarks for routing accuracy, cache hit rates, latency | `benchmarks/run.py`, `benchmarks/benchmark_utils.py` |
+| 11 | Config | Loads environment variables, validates at startup | `app/config.py` |
 
 ---
 
@@ -181,10 +195,31 @@ CREATE TABLE telemetry (
 
 ---
 
+## Adaptive Threshold Schema (Phase 6)
+
+```sql
+CREATE TABLE threshold_history (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    timestamp       TEXT,
+    threshold       REAL,
+    cache_hit_rate  REAL,
+    action          TEXT  -- 'raised', 'lowered', or 'unchanged'
+);
+```
+
+**Endpoints:**
+- `GET /v1/threshold` — current threshold, baseline, last evaluation
+- `POST /v1/threshold/evaluate` — manually trigger threshold evaluation
+- `GET /v1/cache/stats` — vector count, Redis keys, active threshold
+- `DELETE /v1/cache` — flush FAISS + Redis
+- `DELETE /v1/cache/{key}` — invalidate a specific entry
+
+---
+
 ## Technology Stack
 
 | Component | Technology | Version |
-|-----------|-----------|---------|
+|-----------|-----------|---------| 
 | Web Framework | FastAPI | 0.115.6 |
 | Embedding Model | all-MiniLM-L6-v2 | via sentence-transformers 3.3.1 |
 | Vector Index | FAISS (CPU) | 1.9.0.post1 |
