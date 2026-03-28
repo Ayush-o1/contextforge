@@ -1,6 +1,6 @@
 # ContextForge API Reference
 
-> v0.7.0 — All endpoints documented
+> v0.7.0 — Complete endpoint documentation
 
 ---
 
@@ -12,9 +12,26 @@ http://localhost:8000
 
 ---
 
+## Endpoints
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `POST` | `/v1/chat/completions` | Chat completions (OpenAI-compatible) |
+| `GET` | `/health` | Health check |
+| `GET` | `/v1/telemetry` | Paginated telemetry records |
+| `GET` | `/v1/telemetry/summary` | Aggregated telemetry statistics |
+| `GET` | `/v1/threshold` | Current adaptive threshold info |
+| `POST` | `/v1/threshold/evaluate` | Trigger threshold evaluation |
+| `GET` | `/v1/cache/stats` | Cache statistics |
+| `DELETE` | `/v1/cache` | Flush entire cache |
+| `DELETE` | `/v1/cache/{key}` | Invalidate a specific cache entry |
+| `GET` | `/dashboard` | Telemetry dashboard (HTML) |
+
+---
+
 ## `POST /v1/chat/completions`
 
-OpenAI-compatible chat completions endpoint. Supports both streaming and non-streaming.
+OpenAI-compatible chat completions endpoint. Supports both streaming and non-streaming requests.
 
 ### Request Body
 
@@ -50,27 +67,32 @@ OpenAI-compatible chat completions endpoint. Supports both streaming and non-str
 
 ### Response Headers
 
-| Header | Description |
-|--------|-------------|
-| `X-Cache` | `HIT` or `MISS` |
-| `X-Similarity` | Cosine similarity score (on cache hit) |
-| `X-Model-Tier` | Classification result: `simple` or `complex` |
-| `X-Model-Selected` | The model actually used for the upstream call |
-| `X-Compressed` | `True` if context compression was applied |
-| `X-Compression-Ratio` | Ratio of compressed to original tokens (e.g. `0.65`) |
+| Header | Values | Description |
+|--------|--------|-------------|
+| `X-Cache-Hit` | `true` / `false` | Whether the response came from the semantic cache |
+| `X-Model-Tier` | `simple` / `complex` | How the router classified the prompt |
+| `X-Model-Selected` | e.g., `gpt-3.5-turbo`, `gpt-4o` | The model actually used for the upstream call |
+| `X-Compressed` | `true` / `false` | Whether context compression was applied |
+| `X-Compression-Ratio` | e.g., `0.65` | Ratio of compressed to original token count |
 
 ### Special Request Headers
 
 | Header | Description |
 |--------|-------------|
-| `X-ContextForge-Model-Override` | Force a specific model, bypassing the router (e.g. `gpt-4o`) |
+| `X-ContextForge-Model-Override` | Force a specific model, bypassing the router (e.g., `gpt-4o`) |
 | `X-ContextForge-No-Compress` | Set to `true` to skip context compression for this request |
+
+### Notes
+
+- When `stream=true`, the response is returned as Server-Sent Events (SSE). Streaming requests bypass both caching and compression.
+- On cache hit, no upstream API call is made — the cached response is returned directly with `X-Cache-Hit: true`.
+- Upstream errors (429, 500, 502, etc.) are propagated to the client with the original status code and error body.
 
 ---
 
 ## `GET /health`
 
-Health check endpoint.
+Health check endpoint. Returns the server status and version.
 
 ### Response
 
@@ -85,7 +107,7 @@ Health check endpoint.
 
 ## `GET /v1/telemetry`
 
-Returns paginated telemetry records, newest first.
+Returns paginated telemetry records, newest first. All data is stored locally in SQLite.
 
 ### Query Parameters
 
@@ -123,7 +145,7 @@ Returns paginated telemetry records, newest first.
 
 ## `GET /v1/telemetry/summary`
 
-Returns aggregated telemetry statistics.
+Returns aggregated telemetry statistics across all recorded requests.
 
 ### Response
 
@@ -139,11 +161,25 @@ Returns aggregated telemetry statistics.
 }
 ```
 
+### Field Descriptions
+
+| Field | Description |
+|-------|-------------|
+| `total_requests` | Total number of recorded requests |
+| `cache_hits` | Number of requests served from cache |
+| `avg_latency_ms` | Average response latency in milliseconds |
+| `total_cost_usd` | Estimated total cost (approximate — see note below) |
+| `avg_tokens` | Average tokens per request |
+| `cache_hit_rate` | Proportion of requests served from cache (0.0–1.0) |
+| `p95_latency_ms` | 95th percentile latency |
+
+> **Note:** Cost estimates use hardcoded per-token rates in `app/costs.py`. Actual billing from your LLM provider may differ.
+
 ---
 
 ## `GET /v1/threshold`
 
-Returns the current adaptive similarity threshold info.
+Returns the current adaptive similarity threshold and its metadata.
 
 ### Response
 
@@ -171,6 +207,13 @@ Manually triggers an adaptive threshold evaluation based on recent cache hit rat
 }
 ```
 
+### How Evaluation Works
+
+- Analyzes the most recent `ADAPTIVE_THRESHOLD_WINDOW` requests (default: 100)
+- If cache hit rate > 60%: threshold is raised by 0.01 (up to `ADAPTIVE_THRESHOLD_MAX`)
+- If cache hit rate < 20%: threshold is lowered by 0.01 (down to `ADAPTIVE_THRESHOLD_MIN`)
+- Otherwise: threshold stays the same
+
 ---
 
 ## `GET /v1/cache/stats`
@@ -187,11 +230,13 @@ Returns cache statistics including vector count, Redis key count, and current si
 }
 ```
 
+> **Note:** If Redis is unavailable, `redis_keys` will return `0` and an error will be logged. The endpoint will not crash.
+
 ---
 
 ## `DELETE /v1/cache`
 
-Flush the entire semantic cache. Clears all FAISS vectors and Redis cache keys. Idempotent.
+Flush the entire semantic cache. Clears all FAISS vectors and Redis cache keys. This operation is idempotent — calling it on an empty cache returns successfully.
 
 ### Response
 
@@ -207,7 +252,7 @@ Flush the entire semantic cache. Clears all FAISS vectors and Redis cache keys. 
 
 ## `DELETE /v1/cache/{key}`
 
-Invalidate a specific cache entry by its key. Removes both the FAISS vector and Redis entry.
+Invalidate a specific cache entry by its key. Removes both the FAISS vector and the corresponding Redis entry.
 
 ### Path Parameters
 
@@ -224,3 +269,12 @@ Invalidate a specific cache entry by its key. Removes both the FAISS vector and 
   "removed": true
 }
 ```
+
+---
+
+## `GET /dashboard`
+
+Serves the interactive telemetry dashboard. This is an HTML page that runs client-side with Chart.js and fetches data from the telemetry API endpoints.
+
+- When accessed via the server (`http://localhost:8000/dashboard`), it shows live data.
+- When opened directly from the filesystem (`docs/dashboard.html`), it runs in demo mode with sample data.
