@@ -41,10 +41,6 @@ ContextForge is a proxy middleware that sits between LLM-powered applications an
 
 ## Request Pipeline
 
-<!-- [INSERT REQUEST FLOW DIAGRAM HERE: A visual diagram (draw.io, Excalidraw, or similar)
-     showing the request pipeline from client → validate → router → compressor → cache 
-     lookup → (hit: return / miss: proxy → cache store) → telemetry → response. 
-     Include the streaming bypass path. Export as PNG and place in docs/assets/request-pipeline.png] -->
 
 This is the actual request flow as of v0.7.0:
 
@@ -111,10 +107,6 @@ Client Request (POST /v1/chat/completions)
 
 ## Component Diagram
 
-<!-- [INSERT COMPONENT DIAGRAM HERE: A visual diagram showing the relationships between
-     all system components — Gateway, Router, Cache, Proxy, Compressor, Telemetry, 
-     Adaptive Threshold, and external services (Redis, FAISS, OpenAI/Anthropic API).
-     Export as PNG and place in docs/assets/component-diagram.png] -->
 
 ```
 ┌──────────────────┐     ┌────────────────────┐

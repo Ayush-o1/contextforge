@@ -60,10 +60,6 @@ Point your app at `localhost:8000` instead of `api.openai.com`. Same SDK, same A
 
 ## How It Works
 
-<!-- [ADD DEMO GIF/VIDEO HERE: A terminal recording showing three curl requests —
-     (1) a cache miss routed to gpt-3.5-turbo, (2) the same question with different 
-     wording getting a cache hit in <30ms, (3) a complex prompt auto-routed to gpt-4o. 
-     Show the response headers (X-Cache-Hit, X-Model-Tier, X-Model-Selected) clearly.] -->
 
 ```mermaid
 flowchart LR
@@ -207,12 +203,7 @@ X-Model-Selected: gpt-4o    ← upgraded from gpt-3.5-turbo
 
 ContextForge includes a built-in telemetry dashboard that visualizes request data in real time. Access it at `http://localhost:8000/dashboard` when the server is running.
 
-<!-- [ADD DASHBOARD SCREENSHOT HERE: A screenshot of the dashboard showing the chart 
-     area with request metrics, cache hit rate visualization, latency distribution, 
-     and the data table below. Capture it at http://localhost:8000/dashboard with some 
-     real telemetry data populated.] -->
-
-![Dashboard Preview](./docs/assets/dashboard-preview.png)
+![Dashboard](./docs/assets/dashboard-full.png)
 
 The dashboard shows:
 - Total requests, cache hit rate, and cost savings
