@@ -30,11 +30,12 @@
 8. **Streaming** — SSE passthrough works (bypasses cache and compression)
 9. **Error propagation** — Upstream 4xx/5xx errors surface correctly to the caller
 10. **Benchmark suite** — 1000-prompt dataset, E2E benchmark runner with `--dry-run` mode for CI
-11. **`GET /health`** — Returns `{"status":"ok","version":"0.7.0"}`
-12. **`GET /v1/telemetry`** — Paginated telemetry records
-13. **`GET /v1/telemetry/summary`** — Aggregated stats (cache hit rate, avg latency, total cost)
-14. **`GET /v1/threshold`** — Current adaptive threshold info
-15. **`POST /v1/threshold/evaluate`** — Manually trigger threshold evaluation
+11. **Dashboard** — Built-in HTML dashboard at `GET /dashboard` visualizes telemetry data
+12. **`GET /health`** — Returns `{"status":"ok","version":"0.7.0"}`
+13. **`GET /v1/telemetry`** — Paginated telemetry records (stored locally in `./data/telemetry.db`)
+14. **`GET /v1/telemetry/summary`** — Aggregated stats (cache hit rate, avg latency, total cost)
+15. **`GET /v1/threshold`** — Current adaptive threshold info
+16. **`POST /v1/threshold/evaluate`** — Manually trigger threshold evaluation
 
 ---
 
@@ -101,6 +102,14 @@ The adaptive threshold self-tunes between `ADAPTIVE_THRESHOLD_MIN` (0.70) and `A
 
 `app/adaptive.py` uses `datetime.datetime.utcnow()` which triggers a DeprecationWarning on Python 3.12+. This is cosmetic and can be fixed by switching to `datetime.datetime.now(datetime.UTC)`.
 
+### 14. Dashboard is served via static file mount
+
+`app/main.py` mounts the `docs/` directory as `/static` and serves the dashboard HTML at `GET /dashboard`. The dashboard runs entirely client-side with Chart.js and connects to the telemetry API endpoints. If opening `docs/dashboard.html` directly from the filesystem (file:// protocol), it runs in demo mode with mock data since it cannot reach the API.
+
+### 15. Telemetry data is local-only
+
+All telemetry is stored locally in SQLite at `./data/telemetry.db`. No request data is sent to any external service. The file uses WAL mode and can be safely queried with any SQLite client while the server is running.
+
 ---
 
 ## What Phase 8 Requires
@@ -131,6 +140,7 @@ Phase 8 is **Dockerization & Deployment**. Here's what needs to be done:
 - Container starts and health check passes
 - Data persists across container restarts (SQLite, FAISS)
 - Redis connects properly between containers
+- Dashboard loads at `http://localhost:8000/dashboard` (the route already exists in `app/main.py`)
 
 ---
 

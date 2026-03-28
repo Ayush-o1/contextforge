@@ -47,7 +47,7 @@ ContextForge is a proxy middleware that sits between LLM-powered apps and upstre
 This is the actual request flow as of v0.7.0:
 
 ```
-  Client Request
+  Client Request (POST /v1/chat/completions)
        │
        ▼
   ┌─────────────────┐
@@ -64,6 +64,7 @@ This is the actual request flow as of v0.7.0:
   ┌─────────────────┐
   │  Compressor      │  If tokens > threshold AND turns > min_turns:
   │  (non-streaming)  │  summarize older turns via LLM (app/compressor.py)
+  │                  │  Skip if X-ContextForge-No-Compress: true
   └────────┬────────┘
            │
            ▼
@@ -89,7 +90,8 @@ This is the actual request flow as of v0.7.0:
            │
            ▼
   ┌─────────────────┐
-  │ Telemetry Write │  Log model, latency, cost, cache hit (app/telemetry.py)
+  │ Telemetry Write │  Log model, latency, cost, cache hit, compression
+  │                 │  (app/telemetry.py → SQLite with WAL mode)
   └────────┬────────┘
            │
            ▼
@@ -98,6 +100,10 @@ This is the actual request flow as of v0.7.0:
   │                 │    X-Compressed, X-Compression-Ratio headers
   └─────────────────┘
 ```
+
+**Pipeline order (non-streaming):** Request → Validate → Router → Compressor → Cache Lookup → Proxy Forward → Cache Store → Telemetry Write → Response.
+
+**Streaming requests** bypass compression and caching entirely — they go straight from Router to Proxy.
 
 ---
 
@@ -126,12 +132,18 @@ This is the actual request flow as of v0.7.0:
                       │ Redis Cache  │   │ API               │
                       └──────────────┘   └──────────────────┘
 
-    ┌──────────────┐   ┌──────────────────┐
-    │ Adaptive     │   │ Benchmark Runner │
-    │ Threshold    │   │ (benchmarks/     │
-    │ Manager      │   │  run.py)         │
-    │ (adaptive.py)│   │                  │
-    └──────────────┘   └──────────────────┘
+    ┌──────────────┐   ┌──────────────────┐   ┌────────────────┐
+    │ Adaptive     │   │ Context          │   │ Telemetry      │
+    │ Threshold    │   │ Compressor       │   │ Writer         │
+    │ Manager      │   │ (compressor.py)  │   │ (telemetry.py) │
+    │ (adaptive.py)│   │                  │   │ SQLite + WAL   │
+    └──────────────┘   └──────────────────┘   └────────────────┘
+
+    ┌──────────────────┐
+    │ Benchmark Runner │
+    │ (benchmarks/     │
+    │  run.py)         │
+    └──────────────────┘
 ```
 
 ---
