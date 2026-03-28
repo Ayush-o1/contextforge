@@ -20,7 +20,7 @@ class TestHealthCheck:
         assert resp.status_code == 200
         data = resp.json()
         assert data["status"] == "ok"
-        assert data["version"] == "0.5.0"
+        assert data["version"] == "0.6.0"
 
 
 # ──────────────────── Non-Streaming Completions ──────────────────────────

@@ -12,10 +12,10 @@
 
 <p align="center">
   <a href="https://github.com/aayush-1o/contextforge/actions/workflows/ci.yml"><img src="https://github.com/aayush-1o/contextforge/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
-  <img src="https://img.shields.io/badge/tests-54%20passed-brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-69%20passed-brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/python-3.11-blue" alt="Python 3.11">
   <img src="https://img.shields.io/badge/license-MIT-green" alt="License: MIT">
-  <img src="https://img.shields.io/badge/version-0.5.0-orange" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.6.0-orange" alt="Version">
 </p>
 
 ---
@@ -140,12 +140,12 @@ X-Model-Selected: gpt-4o    ← upgraded from gpt-3.5-turbo
 | 3 | Model Router | ✅ Complete |
 | 4 | Context Compressor | ✅ Complete |
 | 5 | Telemetry Layer | ✅ Complete |
-| 6 | Adaptive Thresholds & Cache Invalidation | 🔄 In Progress |
+| 6 | Adaptive Thresholds & Cache Invalidation | ✅ Complete |
 | 7 | Testing & Benchmarking Harness | ⏳ Pending |
 | 8 | Dockerization & Deployment | ⏳ Pending |
 | 9 | Final Documentation & Handoff | ⏳ Pending |
 
-> **`v0.5.0`** · 54/54 tests passing · ruff clean · 1000-prompt benchmark dataset
+> **`v0.6.0`** · 69/69 tests passing · ruff clean · 1000-prompt benchmark dataset
 
 ---
 
@@ -219,6 +219,10 @@ All settings live in `.env` (copy from `.env.example`):
 | `OPENAI_BASE_URL` | Override OpenAI API base URL (for proxies/testing) | `https://api.openai.com/v1` |
 | `CONTEXT_COMPRESSION_THRESHOLD_TOKENS` | Token count above which compression activates (Phase 4) | `2000` |
 | `COMPRESSION_MIN_TURNS` | Minimum conversation turns before compression (Phase 4) | `6` |
+| `ADAPTIVE_THRESHOLD_ENABLED` | Enable adaptive similarity threshold auto-tuning (Phase 6) | `true` |
+| `ADAPTIVE_THRESHOLD_WINDOW` | Number of recent requests to analyze for hit rate (Phase 6) | `100` |
+| `ADAPTIVE_THRESHOLD_MIN` | Minimum allowed similarity threshold (Phase 6) | `0.70` |
+| `ADAPTIVE_THRESHOLD_MAX` | Maximum allowed similarity threshold (Phase 6) | `0.98` |
 
 ---
 
@@ -336,6 +340,71 @@ Returns aggregated telemetry statistics.
 }
 ```
 
+### `GET /v1/threshold`
+
+Returns the current adaptive similarity threshold info.
+
+**Response:**
+```json
+{
+  "current_threshold": 0.93,
+  "baseline": 0.92,
+  "last_evaluated_at": "2026-03-27T12:00:00"
+}
+```
+
+### `POST /v1/threshold/evaluate`
+
+Manually triggers an adaptive threshold evaluation.
+
+**Response:**
+```json
+{
+  "threshold": 0.93,
+  "cache_hit_rate": 0.65,
+  "evaluated_at": "2026-03-27T12:00:00"
+}
+```
+
+### `GET /v1/cache/stats`
+
+Returns cache statistics.
+
+**Response:**
+```json
+{
+  "total_vectors": 150,
+  "redis_keys": 148,
+  "similarity_threshold": 0.93
+}
+```
+
+### `DELETE /v1/cache`
+
+Flush the entire semantic cache. Idempotent.
+
+**Response:**
+```json
+{
+  "status": "ok",
+  "vectors_cleared": 150,
+  "redis_keys_cleared": 148
+}
+```
+
+### `DELETE /v1/cache/{key}`
+
+Invalidate a specific cache entry by its key.
+
+**Response:**
+```json
+{
+  "status": "ok",
+  "key": "abc123",
+  "removed": true
+}
+```
+
 ---
 
 ## 🛠️ Tech Stack
@@ -378,6 +447,7 @@ contextforge/
 │   ├── compressor.py       # Context compression logic (token counting + summarization)
 │   ├── costs.py            # Per-model cost estimation for telemetry
 │   ├── telemetry.py        # SQLite telemetry writer/reader (WAL mode)
+│   ├── adaptive.py         # Adaptive threshold manager (auto-tune similarity)
 │   └── middleware.py       # Request wrapping middleware
 ├── config/
 │   └── routing_rules.yaml  # Token thresholds, keywords, model tier mappings
@@ -387,7 +457,9 @@ contextforge/
 │   ├── test_cache.py       # 14 tests: VectorStore, SemanticCache, endpoints
 │   ├── test_router.py      # 18 tests: classifier, 1000-prompt accuracy, integration
 │   ├── test_compressor.py  # 5 tests: token counting, thresholds, fallback, system msgs
-│   └── test_telemetry.py   # 5 tests: write/read, summary, cost estimation, dedup
+│   ├── test_telemetry.py   # 5 tests: write/read, summary, cost estimation, dedup
+│   ├── test_adaptive.py    # 8 tests: threshold tuning, caps, DB writes, endpoints
+│   └── test_cache_invalidation.py  # 7 tests: flush, invalidate, stats, endpoints
 ├── benchmarks/
 │   └── prompts_labeled.json  # 1000 labeled prompts for router accuracy testing
 ├── fixtures/
@@ -429,8 +501,10 @@ pytest tests/ -v
 | `test_router.py` | 18 | Classifier unit tests, ≥85% accuracy on 1000-prompt labeled set, override header, endpoint integration |
 | `test_compressor.py` | 5 | Token counting, minimum turns check, compression reduces messages, error fallback, system message preservation |
 | `test_telemetry.py` | 5 | Write/read roundtrip, cache hit rate summary, cost estimation, duplicate request ID handling, total requests |
+| `test_adaptive.py` | 8 | Threshold raise/lower/unchanged, min/max caps, DB write, GET/POST endpoint schemas |
+| `test_cache_invalidation.py` | 7 | VectorStore flush, cache invalidate/flush/stats, idempotent flush, endpoint schemas |
 
-> **All 54 tests pass without any live API calls or running services.**
+> **All 69 tests pass without any live API calls or running services.**
 
 ---
 
@@ -477,7 +551,7 @@ A feature is "done" when:
 | ✅ 3 | **Model Router** | Rule-based classifier with tiktoken + keyword signals |
 | ✅ 4 | **Context Compressor** | Summarize long conversation histories to reduce token usage |
 | ✅ 5 | **Telemetry Layer** | Per-request metrics in SQLite — model, latency, cost, cache hit |
-| ⏳ 6 | **Adaptive Thresholds** | Auto-tune similarity threshold + cache invalidation API |
+| ✅ 6 | **Adaptive Thresholds** | Auto-tune similarity threshold + cache invalidation API |
 | ⏳ 7 | **Benchmarking Harness** | E2E benchmarks for cache hit rates, routing accuracy, latency p50/p95/p99 |
 | ⏳ 8 | **Production Docker** | Production images, health checks, volume management, optional GPU |
 | ⏳ 9 | **Final Handoff** | Complete API docs, deployment guide, contributor onboarding |

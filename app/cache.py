@@ -50,8 +50,16 @@ class SemanticCache:
         self._redis = redis
         self._settings = settings
 
-    async def lookup(self, model: str, messages: list[dict]) -> CacheResult:
+    async def lookup(
+        self, model: str, messages: list[dict], *, threshold: float | None = None
+    ) -> CacheResult:
         """Look up a semantically similar cached response.
+
+        Args:
+            model: The model name for context.
+            messages: The conversation messages.
+            threshold: Optional override for the similarity threshold.
+                       Falls back to ``settings.similarity_threshold``.
 
         Steps:
           1. Embed the message content
@@ -59,6 +67,10 @@ class SemanticCache:
           3. If similarity >= threshold, fetch from Redis
           4. Return CacheResult with hit/miss info
         """
+        effective_threshold = (
+            threshold if threshold is not None else self._settings.similarity_threshold
+        )
+
         text = self._embedder.messages_to_text(messages)
         vector = self._embedder.embed(text)
 
@@ -71,7 +83,7 @@ class SemanticCache:
 
         cache_key, similarity = results[0]
 
-        if similarity < self._settings.similarity_threshold:
+        if similarity < effective_threshold:
             logger.debug("cache.miss", reason="below_threshold", similarity=similarity)
             return CacheResult(hit=False, similarity_score=similarity)
 
@@ -116,6 +128,56 @@ class SemanticCache:
 
         logger.info("cache.stored", cache_key=cache_key)
         return cache_key
+
+    async def invalidate(self, key: str) -> bool:
+        """Invalidate a specific cached entry by its Redis key.
+
+        Removes the Redis entry and the corresponding FAISS vector.
+        Returns True if the key existed and was removed.
+        """
+        redis_key = f"cache:{key}"
+        deleted = await self._redis.delete(redis_key)
+        vector_removed = self._vector_store.remove_by_key(key)
+        logger.info("cache.invalidated", cache_key=key, redis_deleted=deleted, vector_removed=vector_removed)
+        return bool(deleted) or vector_removed
+
+    async def flush(self) -> dict[str, int]:
+        """Flush the entire cache — clear all FAISS vectors and Redis cache keys.
+
+        Returns a dict with ``vectors_cleared`` and ``redis_keys_cleared``.
+        """
+        vectors_cleared = self._vector_store.flush()
+
+        # Delete all Redis keys with the cache: prefix
+        redis_keys_cleared = 0
+        cursor = 0
+        while True:
+            cursor, keys = await self._redis.scan(cursor=cursor, match="cache:*", count=100)
+            if keys:
+                redis_keys_cleared += len(keys)
+                await self._redis.delete(*keys)
+            if cursor == 0:
+                break
+
+        logger.info("cache.flushed", vectors_cleared=vectors_cleared, redis_keys_cleared=redis_keys_cleared)
+        return {"vectors_cleared": vectors_cleared, "redis_keys_cleared": redis_keys_cleared}
+
+    async def stats(self) -> dict[str, int]:
+        """Return cache statistics.
+
+        Returns a dict with ``total_vectors`` and ``redis_keys``.
+        """
+        total_vectors = self._vector_store.size
+
+        redis_keys = 0
+        cursor = 0
+        while True:
+            cursor, keys = await self._redis.scan(cursor=cursor, match="cache:*", count=100)
+            redis_keys += len(keys)
+            if cursor == 0:
+                break
+
+        return {"total_vectors": total_vectors, "redis_keys": redis_keys}
 
     async def close(self) -> None:
         """Persist FAISS index and close Redis connection."""

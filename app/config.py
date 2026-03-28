@@ -30,6 +30,11 @@ class Settings(BaseSettings):
     faiss_index_path: str = "./data/faiss.index"
     # --- OpenAI base URL (for testing / custom endpoints) ---
     openai_base_url: str = "https://api.openai.com/v1"
+    # --- Adaptive Threshold ---
+    adaptive_threshold_enabled: bool = True
+    adaptive_threshold_window: int = 100
+    adaptive_threshold_min: float = 0.70
+    adaptive_threshold_max: float = 0.98
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8", "extra": "ignore"}
 

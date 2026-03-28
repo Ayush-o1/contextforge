@@ -107,3 +107,34 @@ class VectorStore:
         with self._lock:
             self._index.reset()
             self._id_map.clear()
+
+    def flush(self) -> int:
+        """Clear the index and remove the persisted id_map file.
+
+        Returns the number of vectors that were cleared.
+        """
+        with self._lock:
+            count = self._index.ntotal
+            self._index.reset()
+            self._id_map.clear()
+            if os.path.exists(self._id_map_path):
+                os.remove(self._id_map_path)
+            logger.info("vector_store.flushed", vectors_cleared=count)
+            return count
+
+    def remove_by_key(self, key: str) -> bool:
+        """Remove a single vector by its cache key.
+
+        Returns True if the key was found and removed, False otherwise.
+        Uses FAISS ``remove_ids`` with the id-map index.
+        """
+        with self._lock:
+            if key not in self._id_map:
+                return False
+            idx = self._id_map.index(key)
+            ids_to_remove = np.array([idx], dtype=np.int64)
+            self._index.remove_ids(ids_to_remove)
+            self._id_map.pop(idx)
+            logger.debug("vector_store.removed", cache_key=key)
+            return True
+

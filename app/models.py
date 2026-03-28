@@ -131,4 +131,4 @@ class HealthResponse(BaseModel):
     """Health check response."""
 
     status: str = "ok"
-    version: str = "0.5.0"
+    version: str = "0.6.0"

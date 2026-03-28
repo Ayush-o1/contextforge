@@ -11,6 +11,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from redis.asyncio import Redis
 
 from app import telemetry as tel
+from app.adaptive import ThresholdManager, get_active_threshold
 from app.cache import SemanticCache
 from app.compressor import compress_context
 from app.config import Settings, get_settings
@@ -67,6 +68,10 @@ async def lifespan(application: FastAPI) -> AsyncGenerator[None, None]:
     # --- Telemetry DB ---
     tel.init_db()
 
+    # --- Adaptive threshold manager ---
+    threshold_manager = ThresholdManager(db_path=settings.sqlite_db_path)
+    application.state.threshold_manager = threshold_manager
+
     logger.info("contextforge.started", log_level=settings.log_level)
     yield
 
@@ -79,7 +84,7 @@ async def lifespan(application: FastAPI) -> AsyncGenerator[None, None]:
 app = FastAPI(
     title="ContextForge",
     description="Proxy middleware for LLM-powered apps",
-    version="0.5.0",
+    version="0.6.0",
     lifespan=lifespan,
 )
 
@@ -111,6 +116,8 @@ async def chat_completions(request: Request, body: ChatCompletionRequest):
     proxy_client: ProxyClient = request.app.state.proxy_client
     cache: SemanticCache = request.app.state.cache
     router: ModelRouter = request.app.state.router
+    settings: Settings = request.app.state.settings
+    threshold_manager: ThresholdManager | None = getattr(request.app.state, "threshold_manager", None)
 
     try:
         messages_dicts = [m.model_dump(exclude_none=True) for m in body.messages]
@@ -150,8 +157,9 @@ async def chat_completions(request: Request, body: ChatCompletionRequest):
                 body.messages[0].__class__(**m) for m in compressed_messages
             ]
 
-        # --- Semantic cache lookup ---
-        cache_result = await cache.lookup(body.model, compressed_messages)
+        # --- Semantic cache lookup (use adaptive threshold) ---
+        active_threshold = get_active_threshold(settings, threshold_manager)
+        cache_result = await cache.lookup(body.model, compressed_messages, threshold=active_threshold)
 
         if cache_result.hit:
             # --- Telemetry: cache hit ---
@@ -229,3 +237,53 @@ async def get_telemetry(limit: int = 50, offset: int = 0):
 @app.get("/v1/telemetry/summary")
 async def get_telemetry_summary():
     return tel.get_summary()
+
+
+# ────────────────── Adaptive Threshold Endpoints ─────────────────────────
+
+
+@app.get("/v1/threshold")
+async def get_threshold(request: Request):
+    """Return the current adaptive threshold info."""
+    settings: Settings = request.app.state.settings
+    manager: ThresholdManager = request.app.state.threshold_manager
+    return manager.get_info(settings)
+
+
+@app.post("/v1/threshold/evaluate")
+async def evaluate_threshold(request: Request):
+    """Manually trigger an adaptive threshold evaluation."""
+    settings: Settings = request.app.state.settings
+    manager: ThresholdManager = request.app.state.threshold_manager
+    result = manager.evaluate(settings)
+    return result
+
+
+# ─────────────────── Cache Invalidation Endpoints ────────────────────────
+
+
+@app.get("/v1/cache/stats")
+async def cache_stats(request: Request):
+    """Return cache statistics."""
+    settings: Settings = request.app.state.settings
+    cache: SemanticCache = request.app.state.cache
+    threshold_manager: ThresholdManager | None = getattr(request.app.state, "threshold_manager", None)
+    stats = await cache.stats()
+    stats["similarity_threshold"] = get_active_threshold(settings, threshold_manager)
+    return stats
+
+
+@app.delete("/v1/cache")
+async def flush_cache(request: Request):
+    """Flush the entire semantic cache."""
+    cache: SemanticCache = request.app.state.cache
+    result = await cache.flush()
+    return {"status": "ok", **result}
+
+
+@app.delete("/v1/cache/{key}")
+async def invalidate_cache_key(key: str, request: Request):
+    """Invalidate a specific cache entry by key."""
+    cache: SemanticCache = request.app.state.cache
+    removed = await cache.invalidate(key)
+    return {"status": "ok", "key": key, "removed": removed}

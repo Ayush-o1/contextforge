@@ -6,6 +6,29 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ---
 
+## [v0.6.0] — 2026-03-27
+
+### Added — Phase 6: Adaptive Thresholds & Cache Invalidation
+- Adaptive similarity threshold auto-tuning based on telemetry cache hit rates (`app/adaptive.py`)
+  - `ThresholdManager` class with SQLite-backed `threshold_history` table
+  - Hit rate > 60% → raise threshold by 0.01 (cap at 0.98)
+  - Hit rate < 20% → lower threshold by 0.01 (floor at 0.70)
+  - `get_active_threshold()` helper for runtime threshold resolution
+- `GET /v1/threshold` endpoint — returns current threshold, baseline, and last evaluation time
+- `POST /v1/threshold/evaluate` endpoint — manually triggers threshold evaluation
+- Cache invalidation API:
+  - `DELETE /v1/cache` — flush entire cache (FAISS vectors + Redis keys), idempotent
+  - `DELETE /v1/cache/{key}` — invalidate a specific cached entry
+  - `GET /v1/cache/stats` — returns vector count, Redis key count, and active similarity threshold
+- `VectorStore.flush()` method — resets index, clears id_map, removes persisted files
+- `VectorStore.remove_by_key()` method — targeted vector removal via FAISS `remove_ids`
+- `SemanticCache.invalidate()`, `SemanticCache.flush()`, and `SemanticCache.stats()` methods
+- Optional `threshold` parameter on `SemanticCache.lookup()` for adaptive override
+- 4 new config settings: `ADAPTIVE_THRESHOLD_ENABLED`, `ADAPTIVE_THRESHOLD_WINDOW`, `ADAPTIVE_THRESHOLD_MIN`, `ADAPTIVE_THRESHOLD_MAX`
+- 15 new tests: 8 adaptive threshold tests + 7 cache invalidation tests (69 total)
+
+---
+
 ## [v0.5.0] — 2026-03-27
 
 ### Added — Phase 5: Telemetry Layer
