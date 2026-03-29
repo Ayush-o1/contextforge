@@ -9,12 +9,12 @@
 | Item | Value |
 |------|-------|
 | **Last completed phase** | Phase 9 (Final Documentation & Handoff) |
-| **Version** | `v0.8.0` |
-| **Tests** | 84/84 passing |
+| **Version** | `v1.0.0` |
+| **Tests** | 84 unit + E2E integration tests passing |
 | **Lint** | ruff clean (zero errors) |
 | **Router accuracy** | 92.8% on 1000-prompt labeled dataset |
 | **Branch** | `main` has all phases merged |
-| **Tags** | `v0.1.0` through `v0.8.0` (one per phase) |
+| **Tags** | `v0.1.0` through `v1.0.0` (one per phase) |
 
 ---
 
@@ -58,7 +58,7 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000
 9. **Error propagation** — Upstream 4xx/5xx errors surface correctly
 10. **Benchmark suite** — 1000-prompt dataset, E2E benchmark runner with `--dry-run` for CI
 11. **Dashboard** — Built-in HTML dashboard at `GET /dashboard`
-12. **Health check** — `GET /health` returns `{"status":"ok","version":"0.7.0"}`
+12. **Health check** — `GET /health` returns `{"status":"ok","version":"1.0.0"}`
 13. **Telemetry API** — `GET /v1/telemetry` (paginated) + `GET /v1/telemetry/summary` (aggregated)
 14. **Threshold API** — `GET /v1/threshold` + `POST /v1/threshold/evaluate`
 
@@ -206,11 +206,11 @@ All telemetry is stored locally in SQLite at `./data/telemetry.db`. No request d
 
 All 9 phases are complete. Potential future enhancements:
 
-- Multi-stage Dockerfile for smaller images
 - ML-based complexity classifier (replacing rule-based router)
 - Multi-provider load balancing
-- Prompt observability and tracing
+- Prompt observability and tracing (OpenTelemetry)
 - Dashboard deployment as a hosted page
+- Qdrant migration for vector storage at scale
 
 ## Related Documentation
 

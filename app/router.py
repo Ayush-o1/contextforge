@@ -52,14 +52,21 @@ class RoutingConfig:
 class ModelRouter:
     """Classifies prompt complexity and selects the appropriate model."""
 
-    def __init__(self, config_path: str = "config/routing_rules.yaml", preferred_provider: str = "openai") -> None:
+    def __init__(
+        self,
+        config_path: str = "config/routing_rules.yaml",
+        preferred_provider: str = "openai",
+        test_mode: bool = False,
+    ) -> None:
         self._preferred_provider = preferred_provider
+        self._test_mode = test_mode
         self._config = self._load_config(config_path)
         logger.info(
             "router.loaded",
             provider=preferred_provider,
             simple_max_tokens=self._config.simple_max_tokens,
             complex_keywords_count=len(self._config.complex_keywords),
+            test_mode=test_mode,
         )
 
     @staticmethod
@@ -182,6 +189,13 @@ class ModelRouter:
         # Classify complexity
         tier, reason = self._classify(text, token_count)
         model_selected = self._select_model(tier, model_requested)
+
+        # TEST_MODE: always use cheapest model regardless of classification
+        if self._test_mode:
+            cheap_map = {"openai": "gpt-3.5-turbo", "anthropic": "claude-3-haiku-20240307"}
+            model_selected = cheap_map.get(self._preferred_provider, "gpt-3.5-turbo")
+            reason = f"test_mode:{reason}"
+            logger.info("router.test_mode", original_model=model_selected, forced_model=model_selected)
 
         logger.info(
             "router.decision",

@@ -35,6 +35,8 @@ class Settings(BaseSettings):
     adaptive_threshold_window: int = 100
     adaptive_threshold_min: float = 0.70
     adaptive_threshold_max: float = 0.98
+    # --- Test Mode ---
+    test_mode: bool = False
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8", "extra": "ignore"}
 

@@ -4,11 +4,13 @@ from __future__ import annotations
 
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 import structlog
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.staticfiles import StaticFiles
 from redis.asyncio import Redis
 
 from app import telemetry as tel
@@ -17,6 +19,7 @@ from app.cache import SemanticCache
 from app.compressor import compress_context
 from app.config import Settings, get_settings
 from app.embedder import Embedder
+from app.middleware import TelemetryMiddleware
 from app.models import ChatCompletionRequest, HealthResponse
 from app.proxy import ProxyClient, UpstreamError
 from app.router import ModelRouter
@@ -59,10 +62,11 @@ async def lifespan(application: FastAPI) -> AsyncGenerator[None, None]:
     )
     application.state.cache = cache
 
-    # --- Model router ---
+    # --- Model router (with test_mode support) ---
     router = ModelRouter(
         config_path="config/routing_rules.yaml",
         preferred_provider=settings.preferred_provider,
+        test_mode=settings.test_mode,
     )
     application.state.router = router
 
@@ -73,7 +77,7 @@ async def lifespan(application: FastAPI) -> AsyncGenerator[None, None]:
     threshold_manager = ThresholdManager(db_path=settings.sqlite_db_path)
     application.state.threshold_manager = threshold_manager
 
-    logger.info("contextforge.started", log_level=settings.log_level)
+    logger.info("contextforge.started", version="1.0.0", log_level=settings.log_level, test_mode=settings.test_mode)
     yield
 
     # --- Shutdown ---
@@ -84,10 +88,14 @@ async def lifespan(application: FastAPI) -> AsyncGenerator[None, None]:
 
 app = FastAPI(
     title="ContextForge",
-    description="Proxy middleware for LLM-powered apps",
-    version="0.7.0",
+    description="Proxy middleware for LLM-powered apps — semantic caching, smart model routing, context compression.",
+    version="1.0.0",
     lifespan=lifespan,
 )
+
+# ─── Middleware (order matters: first added = outermost) ─────────────────
+# TelemetryMiddleware MUST be registered to write per-request telemetry.
+app.add_middleware(TelemetryMiddleware)
 
 app.add_middleware(
     CORSMiddleware,
@@ -96,6 +104,11 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# ─── Mount static dashboard at /dashboard ────────────────────────────────
+_dashboard_dir = Path(__file__).resolve().parent.parent / "docs" / "dashboard"
+if _dashboard_dir.exists():
+    app.mount("/dashboard", StaticFiles(directory=str(_dashboard_dir), html=True), name="dashboard")
 
 
 # ───────────────────────── Health Check ──────────────────────────────────

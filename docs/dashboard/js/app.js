@@ -298,10 +298,11 @@ async function loadData() {
 
   if (connected) {
     try {
+      const base = getApiBaseUrl();
       const [summaryRes, requestsRes, cacheRes] = await Promise.all([
-        fetch('http://localhost:8000/v1/telemetry/summary'),
-        fetch('http://localhost:8000/v1/telemetry?limit=50'),
-        fetch('http://localhost:8000/v1/cache/stats'),
+        fetch(`${base}/v1/telemetry/summary`),
+        fetch(`${base}/v1/telemetry?limit=50`),
+        fetch(`${base}/v1/cache/stats`),
       ]);
       const summary = await summaryRes.json();
       const requests = await requestsRes.json();
@@ -372,6 +373,45 @@ function _drawAccuracyRing(pct) {
   if (label) label.textContent = pct.toFixed(1) + '%';
 }
 
+// ─── LIVE REFRESH ────────────────────────────────────────────
+let _liveRefreshEnabled = false;
+let _liveRefreshInterval = null;
+const REFRESH_INTERVAL_MS = 10000; // 10 seconds
+
+function toggleLiveRefresh() {
+  _liveRefreshEnabled = !_liveRefreshEnabled;
+  const btn = document.getElementById('live-refresh-btn');
+  if (btn) {
+    btn.classList.toggle('active', _liveRefreshEnabled);
+  }
+
+  if (_liveRefreshEnabled) {
+    showToast('Live refresh enabled (10s)', 'success', 2000);
+    _liveRefreshInterval = setInterval(async () => {
+      await loadData();
+      if (_appData && _currentPageId) {
+        navigateTo(_currentPageId);
+      }
+    }, REFRESH_INTERVAL_MS);
+  } else {
+    showToast('Live refresh disabled', 'info', 2000);
+    if (_liveRefreshInterval) {
+      clearInterval(_liveRefreshInterval);
+      _liveRefreshInterval = null;
+    }
+  }
+}
+
+// ─── DYNAMIC API BASE URL ────────────────────────────────────
+function getApiBaseUrl() {
+  // When served by FastAPI at /dashboard, use relative URLs
+  // When opened standalone, default to localhost:8000
+  if (window.location.pathname.startsWith('/dashboard')) {
+    return window.location.origin;
+  }
+  return 'http://localhost:8000';
+}
+
 // ─── EVENT DELEGATION ────────────────────────────────────────
 function _bindEvents() {
   // Nav clicks
@@ -401,6 +441,7 @@ function _bindEvents() {
       case 'clear-cache': handleClearCache(); break;
       case 'save-settings': handleSaveSettings(); break;
       case 'reset-settings': handleResetSettings(); break;
+      case 'toggle-live-refresh': toggleLiveRefresh(); break;
       case 'close-modal': hideModal(actionEl.closest('.modal-overlay')?.id); break;
       case 'cancel-modal': hideModal(actionEl.closest('.modal-overlay')?.id); break;
     }
@@ -455,3 +496,4 @@ async function init() {
 
 // Start
 document.addEventListener('DOMContentLoaded', init);
+
