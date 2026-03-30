@@ -7,6 +7,7 @@ import datetime
 import sqlite3
 import threading
 from contextlib import contextmanager
+from pathlib import Path
 from typing import Any
 
 from app.config import get_settings
@@ -15,8 +16,15 @@ DB_PATH = get_settings().sqlite_db_path
 _lock = threading.Lock()
 
 
+def _ensure_db_dir() -> None:
+    """Ensure the database directory exists."""
+    db_dir = Path(DB_PATH).parent
+    db_dir.mkdir(parents=True, exist_ok=True)
+
+
 def init_db() -> None:
     """Create telemetry table if it doesn't exist."""
+    _ensure_db_dir()
     with get_conn() as conn:
         conn.execute("""
             CREATE TABLE IF NOT EXISTS telemetry (
@@ -41,6 +49,7 @@ def init_db() -> None:
 @contextmanager
 def get_conn():
     """Context manager for SQLite connections."""
+    _ensure_db_dir()
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     try:

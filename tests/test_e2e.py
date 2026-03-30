@@ -46,6 +46,9 @@ def e2e_client():
     os.environ.setdefault("SQLITE_DB_PATH", "./data/test_e2e_telemetry.db")
     os.environ.setdefault("FAISS_INDEX_PATH", "./data/test_e2e_faiss.index")
 
+    # Ensure data directory exists (SQLite can't create parent dirs)
+    os.makedirs("./data", exist_ok=True)
+
     # Clear cached settings so our env vars take effect
     from app.config import get_settings
     get_settings.cache_clear()
