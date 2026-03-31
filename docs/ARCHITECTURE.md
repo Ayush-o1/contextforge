@@ -1,5 +1,5 @@
 # ContextForge Architecture
-> Last updated: v0.8.0 (Phases 0–9 complete)
+> Last updated: v1.0.0 (Phases 0–9 complete, production release)
 
 ---
 
@@ -36,13 +36,18 @@ ContextForge is a proxy middleware that sits between LLM-powered applications an
 | Docker Compose | ✅ | 8 |
 | Modular Dashboard | ✅ | 8 |
 | Production Documentation | ✅ | 9 |
+| E2E Integration Tests (22 tests) | ✅ | 10 |
+| Multi-Stage Dockerfile + Docker Hardening | ✅ | 10 |
+| Railway Deployment Pipeline | ✅ | 10 |
+| TelemetryMiddleware Registration | ✅ | 10 |
+| Dashboard Static Mount (`/dashboard`) | ✅ | 10 |
 
 ---
 
 ## Request Pipeline
 
 
-This is the actual request flow as of v0.8.0:
+This is the actual request flow as of v1.0.0:
 
 ```
 Client Request (POST /v1/chat/completions)

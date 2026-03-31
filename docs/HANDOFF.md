@@ -10,10 +10,10 @@
 |------|-------|
 | **Last completed phase** | Phase 9 (Final Documentation & Handoff) |
 | **Version** | `v1.0.0` |
-| **Tests** | 84 unit + E2E integration tests passing |
+| **Tests** | 106 total (84 unit + 22 E2E); 84 pass without API key, 22 E2E skipped without `OPENAI_API_KEY` |
 | **Lint** | ruff clean (zero errors) |
 | **Router accuracy** | 92.8% on 1000-prompt labeled dataset |
-| **Branch** | `main` has all phases merged |
+| **Branch** | `main` has all phases merged; `aryan-changes` has v1.0.0 production release |
 | **Tags** | `v0.1.0` through `v1.0.0` (one per phase) |
 
 ---
@@ -30,7 +30,7 @@ python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 
 # 3. Verify everything works
-PYTHONPATH=. pytest tests/ -v   # should be 84/84
+PYTHONPATH=. pytest tests/ -v   # 84 unit pass; 22 E2E skipped without OPENAI_API_KEY
 
 # 4. Configure environment
 cp .env.example .env
@@ -96,9 +96,10 @@ Use this to quickly orient yourself in the codebase.
 ### Tests & Benchmarks
 
 | File | What It Does |
-|------|-------------|
+|------|--------------|
 | `tests/conftest.py` | Shared test fixtures (mock Redis, FAISS, proxy) |
-| `tests/test_*.py` | Test files (84 tests total) |
+| `tests/test_*.py` | Unit test files (84 tests total) |
+| `tests/test_e2e.py` | 22 live E2E tests (requires `OPENAI_API_KEY` + Redis) |
 | `benchmarks/run_benchmark.py` | E2E benchmark runner |
 | `benchmarks/benchmark_utils.py` | Paraphrase, latency stats, accuracy utils |
 | `benchmarks/prompts_labeled.json` | 1000 labeled prompts for testing |
@@ -106,10 +107,13 @@ Use this to quickly orient yourself in the codebase.
 ### Infrastructure
 
 | File | What It Does |
-|------|-------------|
-| `Dockerfile` | Python 3.11 container image |
-| `docker-compose.yml` | App + Redis service orchestration |
+|------|--------------|
+| `Dockerfile` | Multi-stage Python 3.11 container (builder + runtime, non-root user) |
+| `docker-compose.yml` | App + Redis service orchestration (health checks, restart policies) |
+| `.dockerignore` | Excludes tests, caches, secrets from build context |
+| `railway.json` | Railway deployment configuration |
 | `.github/workflows/ci.yml` | GitHub Actions: lint + test + benchmark |
+| `.github/workflows/deploy.yml` | GitHub Actions: test → deploy to Railway on main push |
 
 ---
 
@@ -176,19 +180,35 @@ The threshold self-tunes between `ADAPTIVE_THRESHOLD_MIN` (0.70) and `ADAPTIVE_T
 
 `app/adaptive.py` uses `datetime.datetime.utcnow()` which shows a DeprecationWarning on Python 3.12+. Can be fixed by switching to `datetime.datetime.now(datetime.UTC)`.
 
-### 14. Dashboard is a static site
+### 14. Dashboard is a static site (and now mounted at `/dashboard`)
 
-The dashboard lives at `docs/dashboard/index.html`. It is a standalone static web app — no server-side rendering, no build step. It connects to `http://localhost:8000` for live data and falls back to mock data when the backend is unavailable. See [docs/DASHBOARD.md](DASHBOARD.md) for the full architecture.
+The dashboard lives at `docs/dashboard/index.html`. It is a standalone static web app — no server-side rendering, no build step. It connects to `http://localhost:8000` for live data and falls back to mock data when the backend is unavailable. As of v1.0.0, the dashboard is also mounted at `GET /dashboard` via FastAPI `StaticFiles`. See [docs/DASHBOARD.md](DASHBOARD.md) for the full architecture.
 
 ### 15. Telemetry is local-only
 
 All telemetry is stored locally in SQLite at `./data/telemetry.db`. No request data is sent to any external service.
 
+### 16. `./data/` directory must exist for SQLite and FAISS
+
+As of v1.0.0, `app/telemetry.py` auto-creates the `./data/` directory via `_ensure_db_dir()` before any SQLite write. However, if you change `SQLITE_DB_PATH` or `FAISS_INDEX_PATH` to a different location, ensure the parent directory exists.
+
+### 17. E2E tests require live services
+
+`tests/test_e2e.py` tests hit the real OpenAI API and require Redis running. They are automatically skipped when `OPENAI_API_KEY` is not set. To run them:
+```bash
+OPENAI_API_KEY=sk-... PYTHONPATH=. pytest tests/test_e2e.py -v --tb=short -x
+```
+They use `TEST_MODE=true` to force the cheapest model and `max_tokens=50` to minimize cost.
+
+### 18. TEST_MODE forces cheapest model
+
+When `TEST_MODE=true` is set in environment, the `ModelRouter` ignores complexity classification and always selects the cheapest model (`gpt-3.5-turbo` for OpenAI, `claude-3-haiku` for Anthropic). Used by E2E tests to minimize cost.
+
 ---
 
 ## Test Coverage
 
-| File | Tests | What's Tested |
+| Test File | Tests | What's Tested |
 |------|:-----:|---------------|
 | `test_proxy.py` | 12 | Health check, completions, streaming, error propagation |
 | `test_cache.py` | 14 | VectorStore CRUD, SemanticCache hit/miss, endpoint integration |
@@ -198,7 +218,8 @@ All telemetry is stored locally in SQLite at `./data/telemetry.db`. No request d
 | `test_adaptive.py` | 8 | Threshold raise/lower/unchanged, min/max caps, DB write, endpoints |
 | `test_cache_invalidation.py` | 7 | Flush, invalidate, stats, idempotent flush, endpoint schemas |
 | `test_benchmarks.py` | 15 | Paraphrase, latency stats, routing accuracy, confusion matrix |
-| **Total** | **84** | All pass without live API calls or running services |
+| `test_e2e.py` | 22 | Live E2E: cache pipeline, latency, telemetry, routing, compression, errors |
+| **Total** | **106** | 84 unit (no live services) + 22 E2E (requires `OPENAI_API_KEY`) |
 
 ---
 
@@ -219,6 +240,7 @@ All 9 phases are complete. Potential future enhancements:
 | [SETUP.md](SETUP.md) | Local development setup |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | System design and component diagram |
 | [API.md](API.md) | Full API reference |
+| [DEPLOYMENT.md](DEPLOYMENT.md) | Deployment guide (Railway, Docker, VPS) |
 | [DASHBOARD.md](DASHBOARD.md) | Dashboard architecture and guide |
 | [CONFIGURATION.md](CONFIGURATION.md) | Environment variable reference |
 | [TROUBLESHOOTING.md](TROUBLESHOOTING.md) | Common issues and fixes |

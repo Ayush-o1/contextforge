@@ -6,6 +6,32 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ---
 
+## [v1.0.0] — 2026-03-31
+
+### Added — Production Release
+- **22 E2E integration tests** (`tests/test_e2e.py`): live tests against upstream OpenAI API covering cache miss/hit pipeline, latency validation, telemetry write verification, model routing, context compression, error propagation, and concurrent requests. Skipped automatically when `OPENAI_API_KEY` is not set.
+- **Multi-stage Dockerfile**: Builder stage installs dependencies and pre-downloads the embedding model; runtime stage uses non-root `appuser`, `curl`-based healthcheck, and minimal image size.
+- **Docker Compose hardening**: health checks on Redis and app services, restart policies, named Redis volume for persistence, configurable `PORT` via environment.
+- **Railway deployment support**: `railway.json` config, `deploy.yml` GitHub Actions workflow (lint → test → deploy on main push).
+- **TelemetryMiddleware registration**: `app/middleware.py` middleware now properly registered in `app/main.py` to write per-request telemetry.
+- **Dashboard static mount**: dashboard served at `/dashboard` via FastAPI `StaticFiles` when `docs/dashboard/` exists.
+- **Test mode for router**: `TEST_MODE=true` config setting forces cheapest model regardless of complexity classification (safe for CI/E2E).
+- **`.dockerignore`**: excludes tests, benchmarks, `.env`, caches, and docs assets from Docker build context.
+- **`docs/DEPLOYMENT.md`**: comprehensive deployment guide covering Railway, Docker Compose, and VPS deployment.
+- **`aiofiles`** added to `requirements.txt` for static file serving.
+
+### Fixed
+- `app/telemetry.py`: `_ensure_db_dir()` creates `./data/` directory before SQLite/FAISS writes (prevents `sqlite3.OperationalError` in fresh containers).
+- `app/models.py`: `HealthResponse.version` updated from `0.7.0` to `1.0.0`.
+- `pyproject.toml`: project version updated from `0.1.0` to `1.0.0`.
+
+### Changed
+- `app/main.py`: FastAPI app version updated to `1.0.0`, description expanded.
+- `app/router.py`: `ModelRouter.__init__` accepts `test_mode` parameter.
+- Dashboard CSS and JS updated with UI/UX improvements.
+
+---
+
 ## [v0.8.0] — 2026-03-29
 
 ### Added — Phase 8–9: Dashboard & Documentation

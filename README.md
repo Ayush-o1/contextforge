@@ -12,7 +12,7 @@
 
 <p align="center">
   <a href="https://github.com/Ayush-o1/contextforge/actions/workflows/ci.yml"><img src="https://github.com/Ayush-o1/contextforge/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
-  <img src="https://img.shields.io/badge/tests-84%20passed-brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-106%20total%20(84%20unit%20%2B%2022%20e2e)-brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/python-3.11-blue" alt="Python 3.11">
   <img src="https://img.shields.io/badge/license-MIT-green" alt="License: MIT">
   <img src="https://img.shields.io/badge/version-1.0.0-orange" alt="Version">
@@ -321,7 +321,8 @@ contextforge/
 │   ├── test_telemetry.py    # 5 tests — write/read, summary, cost, dedup
 │   ├── test_adaptive.py     # 8 tests — threshold tuning, caps, endpoints
 │   ├── test_cache_invalidation.py  # 7 tests — flush, invalidate, stats
-│   └── test_benchmarks.py   # 15 tests — paraphrase, latency, accuracy
+│   ├── test_benchmarks.py   # 15 tests — paraphrase, latency, accuracy
+│   └── test_e2e.py          # 22 tests — live E2E (requires OPENAI_API_KEY)
 ├── benchmarks/
 │   ├── run_benchmark.py     # E2E benchmark runner
 │   ├── benchmark_utils.py   # Paraphrase, latency stats, accuracy
@@ -375,8 +376,9 @@ PYTHONPATH=. pytest tests/ -v
 | `test_adaptive.py` | 8 | Threshold raise/lower/unchanged, min/max caps, DB write, endpoints |
 | `test_cache_invalidation.py` | 7 | Flush, invalidate, stats, idempotent flush, endpoint schemas |
 | `test_benchmarks.py` | 15 | Paraphrase, latency stats (p50/p95/p99), routing accuracy, confusion matrix |
+| `test_e2e.py` | 22 | Live E2E: cache miss/hit, latency, telemetry, routing, compression, errors |
 
-> **84/84 tests pass** without any live API calls or running services.
+> **106 tests total** — 84 unit tests pass without any live API calls or running services; 22 E2E tests require `OPENAI_API_KEY`.
 
 ---
 
@@ -417,7 +419,7 @@ See [benchmarks/README.md](benchmarks/README.md) for full details.
 | 8 | Dockerization & Dashboard | ✅ Complete |
 | 9 | Final Documentation & Handoff | ✅ Complete |
 
-> **v1.0.0** · 84+ tests passing · ruff clean · modular dashboard · production deployment · Railway support
+> **v1.0.0** · 106 tests (84 unit + 22 E2E) · ruff clean · modular dashboard · production deployment · Railway support
 
 ---
 
@@ -434,7 +436,7 @@ See [benchmarks/README.md](benchmarks/README.md) for full details.
 | [Troubleshooting](docs/TROUBLESHOOTING.md) | Common issues and fixes |
 | [Handoff Guide](docs/HANDOFF.md) | Developer onboarding — gotchas, file map |
 | [Decisions](DECISIONS.md) | Architecture Decision Records (ADR-001 to ADR-004) |
-| [Changelog](CHANGELOG.md) | Version history (v0.0.1 → v0.8.0) |
+| [Changelog](CHANGELOG.md) | Version history (v0.0.1 → v1.0.0) |
 | [Contributing](CONTRIBUTING.md) | Development setup, branch strategy, PR process |
 
 ---
