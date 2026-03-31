@@ -126,14 +126,25 @@ class VectorStore:
         """Remove a single vector by its cache key.
 
         Returns True if the key was found and removed, False otherwise.
-        Uses FAISS ``remove_ids`` with the id-map index.
+        Rebuilds the index since IndexFlatIP does not support ``remove_ids``.
         """
         with self._lock:
             if key not in self._id_map:
                 return False
             idx = self._id_map.index(key)
-            ids_to_remove = np.array([idx], dtype=np.int64)
-            self._index.remove_ids(ids_to_remove)
+
+            # Rebuild: copy all vectors except the one at `idx`
+            n = self._index.ntotal
+            if n <= 1:
+                self._index.reset()
+            else:
+                all_vectors = faiss.rev_swig_ptr(
+                    self._index.get_xb(), n * self._dimension
+                ).reshape(n, self._dimension).copy()
+                keep = np.delete(all_vectors, idx, axis=0)
+                self._index.reset()
+                self._index.add(keep)
+
             self._id_map.pop(idx)
             logger.debug("vector_store.removed", cache_key=key)
             return True
