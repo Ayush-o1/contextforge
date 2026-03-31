@@ -146,7 +146,8 @@ function resetButton(buttonEl, originalText) {
 // ─── API CONNECTION CHECK ────────────────────────────────────
 async function checkAPIConnection() {
   try {
-    const resp = await fetch('http://localhost:8000/health', { signal: AbortSignal.timeout(3000) });
+    const base = typeof getApiBaseUrl === 'function' ? getApiBaseUrl() : 'http://localhost:8000';
+    const resp = await fetch(`${base}/health`, { signal: AbortSignal.timeout(3000) });
     return resp.ok;
   } catch {
     return false;

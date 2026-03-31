@@ -15,7 +15,7 @@
   <img src="https://img.shields.io/badge/tests-84%20passed-brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/python-3.11-blue" alt="Python 3.11">
   <img src="https://img.shields.io/badge/license-MIT-green" alt="License: MIT">
-  <img src="https://img.shields.io/badge/version-0.7.0-orange" alt="Version">
+  <img src="https://img.shields.io/badge/version-1.0.0-orange" alt="Version">
 </p>
 
 ---
@@ -107,7 +107,7 @@ docker compose up --build -d
 
 # Verify
 curl http://localhost:8000/health
-# → {"status":"ok","version":"0.7.0"}
+# → {"status":"ok","version":"1.0.0"}
 ```
 
 ### Option B: Local Development
@@ -417,7 +417,7 @@ See [benchmarks/README.md](benchmarks/README.md) for full details.
 | 8 | Dockerization & Dashboard | ✅ Complete |
 | 9 | Final Documentation & Handoff | ✅ Complete |
 
-> **v0.8.0** · 84/84 tests passing · ruff clean · modular dashboard · production docs
+> **v1.0.0** · 84+ tests passing · ruff clean · modular dashboard · production deployment · Railway support
 
 ---
 
@@ -428,6 +428,7 @@ See [benchmarks/README.md](benchmarks/README.md) for full details.
 | [Setup Guide](docs/SETUP.md) | Local development setup — prerequisites, install, run |
 | [Architecture](docs/ARCHITECTURE.md) | System design, request pipeline, component diagram |
 | [API Reference](docs/API.md) | Full endpoint documentation with request/response schemas |
+| [Deployment](docs/DEPLOYMENT.md) | Deployment guide (Railway, Docker, VPS) |
 | [Dashboard](docs/DASHBOARD.md) | Dashboard architecture, pages, element IDs, dev guide |
 | [Configuration](docs/CONFIGURATION.md) | Complete environment variable reference |
 | [Troubleshooting](docs/TROUBLESHOOTING.md) | Common issues and fixes |
