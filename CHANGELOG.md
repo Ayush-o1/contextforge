@@ -6,6 +6,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ---
 
+## [v1.0.0] — 2026-04-07
+
+### Added — Full Multi-Provider Release
+- **LiteLLM Gateway integration**: All upstream calls now route through LiteLLM, enabling support for 100+ LLM providers with a single unified interface.
+- **Multi-provider model routing**: Users can now specify provider-prefixed models directly in requests (e.g., `groq/llama3-8b-8192`, `gemini/gemini-1.5-pro`, `mistral/mistral-small`, `ollama/llama3`).
+- **New environment variables**: `GEMINI_API_KEY`, `GROQ_API_KEY`, `MISTRAL_API_KEY`, `SIMPLE_MODEL`, `COMPLEX_MODEL` for flexible provider/model configuration.
+- **Automatic failover routing**: LiteLLM handles retries and fallback across providers transparently.
+- **Universal tool-use support**: Tool/function-call schema translation across all providers via `app/proxy.py`.
+- **Failover test suite** (`tests/test_failover.py`) and **tool-use test suite** (`tests/test_tool_use.py`) added.
+- **Contributor recognition**: Added Aryan (@aryanbhat2109-ctrl) as Multi-Provider Integration contributor; updated all team roles.
+- **Documentation overhaul**: README, ARCHITECTURE.md, CONFIGURATION.md, and API.md fully updated to reflect LiteLLM gateway, multi-provider flow, and new env vars.
+- **Team handoff**: Final project state documented with 149 tests passing and ruff clean.
+
+---
+
 ## [v0.8.0] — 2026-03-29
 
 ### Added — Phase 8–9: Dashboard & Documentation

@@ -54,6 +54,7 @@ def test_settings() -> Settings:
         similarity_threshold=0.92,
         cache_ttl_seconds=86400,
         preferred_provider="openai",
+        enable_cache=False,   # never touch Redis in unit tests
     )
 
 

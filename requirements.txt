@@ -8,8 +8,7 @@ pydantic==2.10.5
 pydantic-settings==2.7.1
 
 # -- LLM SDKs --
-openai==1.59.7
-anthropic==0.42.0
+litellm>=1.30.0
 tiktoken==0.8.0
 
 # -- Embeddings --
@@ -39,3 +38,8 @@ ruff==0.9.4
 
 # -- Static file serving --
 aiofiles>=24.1.0
+
+# -- OpenTelemetry (SDK always installed; activated only when ENABLE_OTEL=true) --
+opentelemetry-sdk>=1.20.0
+opentelemetry-exporter-otlp-proto-grpc>=1.20.0
+opentelemetry-instrumentation-fastapi>=0.41b0

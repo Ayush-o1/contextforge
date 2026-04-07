@@ -1,11 +1,11 @@
 # ContextForge Architecture
-> Last updated: v0.8.0 (Phases 0–9 complete)
+> Last updated: v1.0.0 — Full Multi-Provider Release (Phases 0–10 complete)
 
 ---
 
 ## Overview
 
-ContextForge is a proxy middleware that sits between LLM-powered applications and upstream providers (OpenAI, Anthropic). It exposes an OpenAI-compatible `POST /v1/chat/completions` endpoint so apps can connect with zero code changes. Behind the scenes, it applies three optimizations to reduce cost and latency:
+ContextForge is an OpenAI-compatible LLM proxy middleware that sits between LLM-powered applications and upstream providers (OpenAI, Anthropic, Gemini, Groq, Mistral, Ollama, and 100+ more). It exposes an OpenAI-compatible `POST /v1/chat/completions` endpoint so apps can connect with zero code changes. All upstream calls are routed through the **LiteLLM Gateway**, which handles multi-provider auth, retries, and failover automatically. Behind the scenes, ContextForge applies three optimizations to reduce cost and latency:
 
 1. **Context compression** — summarizes long conversation histories to reduce token usage
 2. **Semantic caching** — returns cached responses for semantically similar prompts
@@ -41,8 +41,28 @@ ContextForge is a proxy middleware that sits between LLM-powered applications an
 
 ## Request Pipeline
 
+This is the actual request flow as of v1.0.0:
 
-This is the actual request flow as of v0.8.0:
+```
+User App (any OpenAI-compatible SDK)
+  │
+  ▼
+ContextForge Gateway  ←  POST /v1/chat/completions
+  │
+  ├── Context Compressor  (summarize long conversation histories)
+  ├── Semantic Cache       (FAISS + Redis — return cached hit in <30ms)
+  ├── Model Router         (classify complexity → simple/complex tier)
+  │
+  ▼
+LiteLLM Gateway  ←  unified multi-provider call with failover & retries
+  │
+  ▼
+Provider API  (OpenAI / Anthropic / Gemini / Groq / Mistral / Ollama / 100+)
+```
+
+> **Provider-prefixed models** — pass `model: "groq/llama3-8b-8192"`, `model: "gemini/gemini-1.5-pro"`, or any LiteLLM-supported string directly. The gateway transparently handles auth, retries, and failover.
+
+Detailed pipeline:
 
 ```
 Client Request (POST /v1/chat/completions)
@@ -99,9 +119,9 @@ Client Request (POST /v1/chat/completions)
 └──────────────────┘
 ```
 
-**Non-streaming:** Request → Validate → Router → Compressor → Cache Lookup → Proxy → Cache Store → Telemetry → Response
+**Non-streaming:** Request → Validate → Router → Compressor → Cache Lookup → LiteLLM Gateway → Cache Store → Telemetry → Response
 
-**Streaming:** Request → Validate → Router → Proxy (bypasses compression and caching entirely)
+**Streaming:** Request → Validate → Router → LiteLLM Gateway (bypasses compression and caching entirely)
 
 ---
 
@@ -117,19 +137,20 @@ Client Request (POST /v1/chat/completions)
               ┌─────────────────┼──────────────────┐
               │                 │                   │
               ▼                 ▼                   ▼
-    ┌──────────────┐  ┌──────────────┐   ┌──────────────────┐
-    │ Model Router │  │ Semantic     │   │ Proxy Client     │
-    │ (router.py)  │  │ Cache        │   │ (proxy.py)       │
-    │              │  │ (cache.py)   │   │                  │
-    │ tiktoken +   │  │              │   │ openai-python    │
-    │ keywords     │  │ Embedder +   │   │ SDK              │
-    └──────────────┘  │ VectorStore  │   └────────┬─────────┘
-                      └──────┬───────┘            │
-                             │                    ▼
-                      ┌──────┴───────┐   ┌──────────────────┐
-                      │ FAISS Index  │   │ OpenAI / Anthropic│
-                      │ Redis Cache  │   │ API               │
-                      └──────────────┘   └──────────────────┘
+    ┌──────────────┐  ┌──────────────┐   ┌──────────────────────┐
+    │ Model Router │  │ Semantic     │   │ LiteLLM Gateway      │
+    │ (router.py)  │  │ Cache        │   │ (proxy.py)           │
+    │              │  │ (cache.py)   │   │                      │
+    │ tiktoken +   │  │              │   │ 100+ providers:      │
+    │ keywords     │  │ Embedder +   │   │ OpenAI / Gemini /    │
+    └──────────────┘  │ VectorStore  │   │ Groq / Mistral /     │
+                      └──────┬───────┘   │ Anthropic / Ollama   │
+                             │           └──────────┬───────────┘
+                      ┌──────┴───────┐             │
+                      │ FAISS Index  │             ▼
+                      │ Redis Cache  │   ┌──────────────────────┐
+                      └──────────────┘   │ Provider API         │
+                                         └──────────────────────┘
 
     ┌──────────────┐   ┌──────────────────┐   ┌────────────────┐
     │ Adaptive     │   │ Context          │   │ Telemetry      │
@@ -156,7 +177,7 @@ Client Request (POST /v1/chat/completions)
 | 2 | Model Router | Classifies prompt complexity, selects model tier | `app/router.py`, `config/routing_rules.yaml` |
 | 3 | Context Compressor | Summarizes long conversations to reduce token count | `app/compressor.py` |
 | 4 | Semantic Cache | Embeds prompts, searches FAISS, manages Redis cache | `app/cache.py`, `app/embedder.py`, `app/vector_store.py` |
-| 5 | Proxy Layer | Forwards requests to upstream LLM providers | `app/proxy.py` |
+| 5 | LiteLLM Gateway | Forwards requests to 100+ upstream LLM providers with failover | `app/proxy.py` |
 | 6 | Telemetry | Tracks per-request metrics in SQLite (WAL mode) | `app/telemetry.py`, `app/costs.py` |
 | 7 | Middleware | Wraps requests with telemetry state | `app/middleware.py` |
 | 8 | Adaptive Thresholds | Auto-tunes similarity threshold from cache hit rates | `app/adaptive.py` |
@@ -198,11 +219,11 @@ For full details, see [DASHBOARD.md](DASHBOARD.md).
 | Component | Technology | Version |
 |-----------|-----------|---------| 
 | Web Framework | FastAPI | 0.115.6 |
+| **LLM Gateway** | **LiteLLM** | 1.x |
 | Embedding Model | all-MiniLM-L6-v2 | via sentence-transformers 3.3.1 |
 | Vector Index | FAISS (CPU) | 1.9.0.post1 |
 | Cache Store | Redis | 7 (Alpine) |
 | Token Counter | tiktoken | 0.8.0 |
-| LLM SDKs | openai-python / anthropic-python | 1.59.7 / 0.42.0 |
 | Config | Pydantic Settings | 2.7.1 |
 | Logging | structlog | 24.4.0 |
 | Testing | pytest + httpx | 8.3.4 / 0.28.1 |

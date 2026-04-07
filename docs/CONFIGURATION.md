@@ -20,10 +20,26 @@ All variables are loaded by `app/config.py` using [Pydantic Settings](https://do
 
 | Variable | Description | Default | Required |
 |----------|-------------|---------|:--------:|
-| `OPENAI_API_KEY` | Your OpenAI API key | — | ✅ |
-| `ANTHROPIC_API_KEY` | Your Anthropic API key | `""` | No |
-| `PREFERRED_PROVIDER` | Which provider to use: `openai` or `anthropic` | `openai` | No |
+| `OPENAI_API_KEY` | OpenAI API key | — | Only for OpenAI |
+| `ANTHROPIC_API_KEY` | Anthropic API key | `""` | Only for Anthropic |
+| `GEMINI_API_KEY` | Google Gemini API key | `""` | Only for Gemini |
+| `GROQ_API_KEY` | Groq API key | `""` | Only for Groq |
+| `MISTRAL_API_KEY` | Mistral API key | `""` | Only for Mistral |
+| `PREFERRED_PROVIDER` | Default provider: `openai`, `anthropic`, `gemini`, `groq`, `mistral`, `ollama` | `openai` | No |
 | `OPENAI_BASE_URL` | Override OpenAI API base URL (for proxies or testing) | `https://api.openai.com/v1` | No |
+
+> **LiteLLM routing:** You can specify any LiteLLM-prefixed model name in requests, e.g., `groq/llama3-8b-8192`, `gemini/gemini-1.5-pro`, `mistral/mistral-small`. ContextForge passes these through LiteLLM automatically.
+
+## Model Routing
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `SIMPLE_MODEL` | Model used for simple/cheap prompts | `gpt-3.5-turbo` |
+| `COMPLEX_MODEL` | Model used for complex/expensive prompts | `gpt-4o` |
+
+You can set these to any LiteLLM-compatible model string, e.g.,:
+- `SIMPLE_MODEL=groq/llama3-8b-8192`
+- `COMPLEX_MODEL=gemini/gemini-1.5-pro`
 
 ---
 
@@ -88,10 +104,17 @@ Logs are structured JSON via [structlog](https://www.structlog.org/).
 ## Example `.env` File
 
 ```bash
-# LLM Provider Keys
+# LLM Provider Keys (set only the ones you use)
 OPENAI_API_KEY=sk-your-key-here
 ANTHROPIC_API_KEY=
+GEMINI_API_KEY=
+GROQ_API_KEY=
+MISTRAL_API_KEY=
 PREFERRED_PROVIDER=openai
+
+# Model Routing
+SIMPLE_MODEL=gpt-3.5-turbo
+COMPLEX_MODEL=gpt-4o
 
 # Cache
 REDIS_URL=redis://localhost:6379

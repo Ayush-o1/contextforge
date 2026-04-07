@@ -5,15 +5,14 @@
 <h1 align="center">ContextForge</h1>
 
 <p align="center">
-  <strong>Cut your LLM API costs by up to 60% — with zero code changes.</strong><br/>
-  A drop-in proxy that adds semantic caching, smart model routing, and context compression<br/>
-  to any OpenAI-compatible application.
+  <strong>An OpenAI-compatible LLM proxy middleware that reduces cost and latency using LiteLLM for 100+ provider support, semantic caching, model routing, and context compression.</strong><br/>
+  Point your app at <code>localhost:8000</code>. Same SDK, same API — instant access to OpenAI, Anthropic, Gemini, Groq, Mistral, and Ollama.
 </p>
 
 <p align="center">
   <a href="https://github.com/Ayush-o1/contextforge/actions/workflows/ci.yml"><img src="https://github.com/Ayush-o1/contextforge/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
-  <img src="https://img.shields.io/badge/tests-84%20passed-brightgreen" alt="Tests">
-  <img src="https://img.shields.io/badge/python-3.11-blue" alt="Python 3.11">
+  <img src="https://img.shields.io/badge/tests-149%20passed-brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/python-3.11+-blue" alt="Python 3.11+">
   <img src="https://img.shields.io/badge/license-MIT-green" alt="License: MIT">
   <img src="https://img.shields.io/badge/version-1.0.0-orange" alt="Version">
 </p>
@@ -46,15 +45,25 @@
 
 Most LLM-powered apps send every prompt to the most expensive model, even when a cached answer or a cheaper model would work just fine. ContextForge fixes that — transparently.
 
-Point your app at `localhost:8000` instead of `api.openai.com`. Same SDK, same API, same code. Behind the scenes, ContextForge applies three cost-saving optimizations before anything hits a paid API:
+Point your app at `localhost:8000` instead of `api.openai.com`. Same SDK, same API, same code. Behind the scenes, ContextForge routes through **LiteLLM** — a universal gateway supporting 100+ providers — and applies optimizations before anything hits a paid API:
 
 |  | Without ContextForge | With ContextForge |
 |--|----------------------|-------------------|
 | **Cost per request** | Full price, every time | Cached hits are **free**, simple prompts routed to cheaper models |
 | **Latency on repeat queries** | 500ms–2s (full API round-trip) | **< 30ms** from local cache |
 | **Code changes needed** | — | **Zero** — just change the base URL |
-| **Model flexibility** | Hardcoded in your app | Automatic: simple → GPT-3.5, complex → GPT-4o |
-| **Vendor lock-in** | Tied to one provider | Swap models or providers via config |
+| **Provider support** | Hardcoded to one vendor | **100+ providers** via LiteLLM (OpenAI, Gemini, Groq, Anthropic, Mistral, Ollama …) |
+| **Vendor lock-in** | Tied to one provider | Swap models or providers via a single env var |
+
+### Key Features
+
+| Feature | Description |
+|---------|-------------|
+| 🔌 **Unified API** | One interface for OpenAI, Anthropic, Gemini, Groq, Mistral, and Ollama |
+| ⚡ **Semantic Caching** | Redis-backed caching returns instant responses for semantically similar prompts |
+| 🧠 **Intelligent Routing** | Automatic failovers and complexity-based routing to simple/complex model tiers |
+| ✂️ **Context Compression** | Automatic summarization of long conversation histories to reduce token usage |
+| 📊 **Telemetry** | Per-request cost tracking, latency monitoring, and aggregated savings reports |
 
 ---
 
@@ -78,11 +87,11 @@ flowchart LR
     T2 --> H
 ```
 
-1. **Your app sends a request** — exactly like it would to OpenAI. No SDK changes, no wrapper code.
+1. **Your app sends a request** — exactly like it would to OpenAI. No SDK changes, no wrapper code. You can specify provider-prefixed models like `groq/llama3-8b-8192` or `gemini/gemini-1.5-pro`.
 2. **Context compression** — if the conversation exceeds the token threshold (default: 2,000 tokens) and has enough turns (default: 6), older messages are summarized to reduce token usage. Skipped for short conversations or when `X-ContextForge-No-Compress: true` is set.
 3. **Semantic cache lookup** — the prompt is embedded using `all-MiniLM-L6-v2` and searched against a FAISS index. If a match is found at ≥92% cosine similarity, the cached response is returned in under 30ms.
 4. **Smart model routing** — on cache miss, a rule-based classifier analyzes token count and keyword signals. Simple prompts go to cheaper models; complex prompts go to the best available.
-5. **Upstream call** — the request is forwarded to the selected model via the official SDK.
+5. **Upstream call (LiteLLM Gateway)** — the request is forwarded to the selected provider through LiteLLM, which handles auth, retries, and failover across 100+ providers automatically.
 6. **Cache store** — the response is embedded and stored in FAISS + Redis for future lookups.
 7. **Telemetry** — every request is logged to a local SQLite database with model, latency, cost, cache hit status, and compression info. No data leaves your machine.
 8. **Response returned** — your app receives a standard OpenAI-compatible response with extra diagnostic headers.
@@ -232,11 +241,17 @@ cp .env.example .env
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `OPENAI_API_KEY` | Your OpenAI API key | *(required)* |
+| `OPENAI_API_KEY` | Your OpenAI API key | *(required for OpenAI)* |
+| `ANTHROPIC_API_KEY` | Your Anthropic API key | — |
+| `GEMINI_API_KEY` | Your Google Gemini API key | — |
+| `GROQ_API_KEY` | Your Groq API key | — |
+| `MISTRAL_API_KEY` | Your Mistral API key | — |
+| `PREFERRED_PROVIDER` | Default LLM provider | `openai` |
+| `SIMPLE_MODEL` | Model for simple/cheap prompts | `gpt-3.5-turbo` |
+| `COMPLEX_MODEL` | Model for complex/expensive prompts | `gpt-4o` |
 | `REDIS_URL` | Redis connection string | `redis://localhost:6379` |
 | `SIMILARITY_THRESHOLD` | Cosine similarity for cache hits (0.0–1.0) | `0.92` |
 | `CACHE_TTL_SECONDS` | Cache entry lifetime | `86400` (24h) |
-| `PREFERRED_PROVIDER` | LLM provider: `openai` or `anthropic` | `openai` |
 | `LOG_LEVEL` | Logging verbosity | `INFO` |
 
 For the full configuration reference with all variables, see [docs/CONFIGURATION.md](docs/CONFIGURATION.md).
@@ -249,7 +264,7 @@ ContextForge exposes an OpenAI-compatible API with additional management endpoin
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| `POST` | `/v1/chat/completions` | Chat completions (OpenAI-compatible) |
+| `POST` | `/v1/chat/completions` | Chat completions (OpenAI-compatible, tools supported) |
 | `GET` | `/health` | Health check |
 | `GET` | `/v1/telemetry` | Paginated telemetry records |
 | `GET` | `/v1/telemetry/summary` | Aggregated telemetry stats |
@@ -258,6 +273,9 @@ ContextForge exposes an OpenAI-compatible API with additional management endpoin
 | `GET` | `/v1/cache/stats` | Cache statistics |
 | `DELETE` | `/v1/cache` | Flush entire cache |
 | `DELETE` | `/v1/cache/{key}` | Invalidate a specific cache entry |
+| `GET` | `/admin/usage` | Cost/token usage summary with filters |
+| `GET` | `/admin/logs` | Paginated raw request log |
+| `GET` | `/admin/savings` | Total savings (cache + routing) breakdown |
 
 **Response headers** on `/v1/chat/completions`:
 
@@ -278,12 +296,12 @@ For full request/response schemas, see [docs/API.md](docs/API.md).
 | Component | Technology | Why |
 |-----------|-----------|-----|
 | Web framework | **FastAPI** (Python 3.11) | Async-first, OpenAPI auto-docs |
+| **LLM Gateway** | **LiteLLM** | 100+ provider support, unified interface |
 | Embeddings | **all-MiniLM-L6-v2** | CPU-fast, 384-dim, no GPU needed |
 | Vector search | **FAISS** (IndexFlatIP) | In-process, zero infra |
 | Cache store | **Redis 7** | TTL support, fast KV reads |
 | Token counting | **tiktoken** | Model-specific, fast |
 | Telemetry | **SQLite** (via SQLModel) | Zero infra, single-file |
-| LLM SDK | **openai-python** | Official SDK, version-pinned |
 | Config | **Pydantic Settings** + `.env` | Type-safe, validated at startup |
 | Logging | **structlog** | Structured JSON logs |
 | Testing | **pytest** + **httpx** | Fixture-based, no live API calls |
@@ -297,17 +315,20 @@ For full request/response schemas, see [docs/API.md](docs/API.md).
 ```
 contextforge/
 ├── app/
+│   ├── api/
+│   │   ├── __init__.py          # API sub-package
+│   │   └── admin.py             # Admin endpoints: /admin/usage, /admin/logs, /admin/savings
 │   ├── main.py              # FastAPI app, lifespan, all endpoints
-│   ├── proxy.py             # Upstream forwarding via OpenAI SDK
-│   ├── models.py            # Pydantic request/response schemas
-│   ├── config.py            # Pydantic Settings (loads .env)
+│   ├── proxy.py             # Upstream forwarding — tool translation guard, callbacks
+│   ├── models.py            # Pydantic request/response schemas (tools, tool_calls)
+│   ├── config.py            # Pydantic Settings (loads .env, OTel, compression config)
 │   ├── cache.py             # Semantic cache (FAISS + Redis)
 │   ├── embedder.py          # Sentence-transformer embedding wrapper
 │   ├── vector_store.py      # FAISS index with thread-safe writes
 │   ├── router.py            # Rule-based complexity classifier
-│   ├── compressor.py        # Context compression (summarization)
-│   ├── costs.py             # Per-model cost estimation
-│   ├── telemetry.py         # SQLite telemetry (WAL mode)
+│   ├── compressor.py        # Context compression (summarization + metadata)
+│   ├── costs.py             # Per-model cost estimation (static fallback)
+│   ├── telemetry.py         # SQLite telemetry — request_log, get_total_savings()
 │   ├── adaptive.py          # Adaptive threshold manager
 │   └── middleware.py        # Request wrapping middleware
 ├── config/
@@ -375,8 +396,11 @@ PYTHONPATH=. pytest tests/ -v
 | `test_adaptive.py` | 8 | Threshold raise/lower/unchanged, min/max caps, DB write, endpoints |
 | `test_cache_invalidation.py` | 7 | Flush, invalidate, stats, idempotent flush, endpoint schemas |
 | `test_benchmarks.py` | 15 | Paraphrase, latency stats (p50/p95/p99), routing accuracy, confusion matrix |
+| `test_tool_use.py` | — | Tool-use passthrough, schema translation, multi-provider tool calls |
+| `test_failover.py` | — | LiteLLM failover routing, provider retry behavior |
+| `test_phase3.py` | — | Phase 3 end-to-end router integration |
 
-> **84/84 tests pass** without any live API calls or running services.
+> **149/149 tests pass** without any live API calls or running services.
 
 ---
 
@@ -407,17 +431,13 @@ See [benchmarks/README.md](benchmarks/README.md) for full details.
 | Phase | Feature | Status |
 |:-----:|---------|:------:|
 | 0 | Architecture & Repo Setup | ✅ Complete |
-| 1 | Core Proxy (Passthrough) | ✅ Complete |
-| 2 | Semantic Cache | ✅ Complete |
-| 3 | Model Router | ✅ Complete |
-| 4 | Context Compressor | ✅ Complete |
-| 5 | Telemetry Layer | ✅ Complete |
-| 6 | Adaptive Thresholds & Cache Invalidation | ✅ Complete |
-| 7 | Testing & Benchmarking Harness | ✅ Complete |
-| 8 | Dockerization & Dashboard | ✅ Complete |
-| 9 | Final Documentation & Handoff | ✅ Complete |
+| 1 | Core Proxy + Tool Passthrough | ✅ Complete |
+| 2 | Semantic Cache (FAISS + Redis) | ✅ Complete |
+| 3 | Observability, Cost Tracking & OTel | ✅ Complete |
+| 4 | Intelligent Context Compression | ✅ Complete |
+| 5 | Universal Tool-Use & Final Handoff | ✅ Complete |
 
-> **v1.0.0** · 84+ tests passing · ruff clean · modular dashboard · production deployment · Railway support
+> **v1.0.0** · 149 tests passing · ruff clean · modular dashboard · admin API · production deployment
 
 ---
 
@@ -434,14 +454,14 @@ See [benchmarks/README.md](benchmarks/README.md) for full details.
 | [Troubleshooting](docs/TROUBLESHOOTING.md) | Common issues and fixes |
 | [Handoff Guide](docs/HANDOFF.md) | Developer onboarding — gotchas, file map |
 | [Decisions](DECISIONS.md) | Architecture Decision Records (ADR-001 to ADR-004) |
-| [Changelog](CHANGELOG.md) | Version history (v0.0.1 → v0.8.0) |
+| [Changelog](CHANGELOG.md) | Version history (v0.0.1 → v1.0.0) |
 | [Contributing](CONTRIBUTING.md) | Development setup, branch strategy, PR process |
 
 ---
 
 ## Contributors
 
-Thanks to everyone who has contributed to ContextForge.
+Built by a 4-person team as a production-grade capstone system.
 
 <table>
   <tr>
@@ -452,16 +472,7 @@ Thanks to everyone who has contributed to ContextForge.
         <sub><b>Ayush Kumar</b></sub>
       </a>
       <br />
-      <sub>Creator & Maintainer</sub>
-    </td>
-    <td align="center">
-      <a href="https://github.com/Anubhav104401">
-        <img src="https://github.com/Anubhav104401.png" width="80px;" alt="Anubhav"/>
-        <br />
-        <sub><b>Anubhav</b></sub>
-      </a>
-      <br />
-      <sub>Contributor</sub>
+      <sub>Lead Architect</sub>
     </td>
     <td align="center">
       <a href="https://github.com/Astik01">
@@ -470,13 +481,28 @@ Thanks to everyone who has contributed to ContextForge.
         <sub><b>Astik</b></sub>
       </a>
       <br />
-      <sub>Contributor</sub>
+      <sub>Core Engineering</sub>
+    </td>
+    <td align="center">
+      <a href="https://github.com/Anubhav104401">
+        <img src="https://github.com/Anubhav104401.png" width="80px;" alt="Anubhav"/>
+        <br />
+        <sub><b>Anubhav</b></sub>
+      </a>
+      <br />
+      <sub>Systems & Logic</sub>
+    </td>
+    <td align="center">
+      <a href="https://github.com/aryanbhat2109-ctrl">
+        <img src="https://github.com/aryanbhat2109-ctrl.png" width="80px;" alt="Aryan"/>
+        <br />
+        <sub><b>Aryan</b></sub>
+      </a>
+      <br />
+      <sub>Multi-Provider Integration</sub>
     </td>
   </tr>
 </table>
-
-<!-- To add a new contributor: copy a <td> block above, update the GitHub username,
-     image URL (https://github.com/USERNAME.png), display name, and role. -->
 
 ---
 
@@ -507,5 +533,5 @@ This project is licensed under the MIT License. See [LICENSE](LICENSE) for detai
 ---
 
 <p align="center">
-  <sub>Built for developers who are tired of overpaying for LLM APIs.</sub>
+  <sub>Built for developers who are tired of overpaying for LLM APIs — now with 100+ provider support via LiteLLM.</sub>
 </p>

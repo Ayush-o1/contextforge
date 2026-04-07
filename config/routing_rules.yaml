@@ -47,13 +47,22 @@ rules:
       - "vulnerability"
 
 # Model tier mappings by provider
+# NOTE: These are fallback defaults. Set SIMPLE_MODEL / COMPLEX_MODEL in your
+# .env to override at runtime without changing this file. LiteLLM provider
+# prefixes (e.g. groq/, gemini/, anthropic/) are supported in those env vars.
 model_map:
   openai:
     simple: "gpt-3.5-turbo"
     complex: "gpt-4o"
   anthropic:
     simple: "claude-3-haiku-20240307"
-    complex: "claude-3-opus-20240229"
+    complex: "claude-3-5-sonnet-20241022"
+  groq:
+    simple: "groq/llama3-8b-8192"
+    complex: "groq/llama3-70b-8192"
+  gemini:
+    simple: "gemini/gemini-1.5-flash"
+    complex: "gemini/gemini-1.5-pro"
 
 # Default model when no rule matches
 default_model: "gpt-3.5-turbo"
@@ -62,3 +71,25 @@ default_model: "gpt-3.5-turbo"
 provider_preference:
   - openai
   - anthropic
+  - groq
+  - gemini
+
+# ── Failover chains (enforced by LiteLLM Router in app/proxy.py) ──────────
+# If the primary model returns a 429 / 5xx after num_retries, the Router
+# automatically tries the next model in the list. No code changes needed —
+# just ensure the corresponding API key is set in .env.
+fallbacks:
+  # Complex tier: gpt-4o → claude-3-5-sonnet → gemini-1.5-pro
+  gpt-4o:
+    - "claude-3-5-sonnet"
+    - "gemini-1.5-pro"
+
+  # Simple tier: gpt-3.5-turbo → groq/llama3-8b → gemini-flash
+  gpt-3.5-turbo:
+    - "groq/llama3-8b-8192"
+    - "gemini-1.5-flash"
+
+  # Anthropic complex fallback
+  claude-3-5-sonnet:
+    - "gpt-4o"
+    - "gemini-1.5-pro"

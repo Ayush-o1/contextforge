@@ -1,6 +1,6 @@
 # ContextForge API Reference
 
-> v0.7.0 — Complete endpoint documentation
+> v1.0.0 — Full Multi-Provider (LiteLLM) Release
 
 ---
 
@@ -16,7 +16,7 @@ http://localhost:8000
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| `POST` | `/v1/chat/completions` | Chat completions (OpenAI-compatible) |
+| `POST` | `/v1/chat/completions` | Chat completions (OpenAI-compatible, tools supported, multi-provider via LiteLLM) |
 | `GET` | `/health` | Health check |
 | `GET` | `/v1/telemetry` | Paginated telemetry records |
 | `GET` | `/v1/telemetry/summary` | Aggregated telemetry statistics |
@@ -25,6 +25,9 @@ http://localhost:8000
 | `GET` | `/v1/cache/stats` | Cache statistics |
 | `DELETE` | `/v1/cache` | Flush entire cache |
 | `DELETE` | `/v1/cache/{key}` | Invalidate a specific cache entry |
+| `GET` | `/admin/usage` | Cost/token usage summary with filters |
+| `GET` | `/admin/logs` | Paginated raw request log |
+| `GET` | `/admin/savings` | Total savings (cache + routing) breakdown |
 
 ---
 
@@ -33,6 +36,8 @@ http://localhost:8000
 OpenAI-compatible chat completions endpoint. Supports both streaming and non-streaming requests.
 
 ### Request Body
+
+ContextForge accepts any OpenAI-compatible `model` string. You can also specify **provider-prefixed model names** to route through LiteLLM to alternate providers:
 
 ```json
 {
@@ -44,6 +49,18 @@ OpenAI-compatible chat completions endpoint. Supports both streaming and non-str
   "stream": false
 }
 ```
+
+**Multi-provider examples** — just change the `model` field:
+
+```json
+{ "model": "groq/llama3-8b-8192",       "messages": [...] }  // Groq
+{ "model": "gemini/gemini-1.5-pro",     "messages": [...] }  // Google Gemini
+{ "model": "anthropic/claude-3-haiku",  "messages": [...] }  // Anthropic
+{ "model": "mistral/mistral-small",     "messages": [...] }  // Mistral
+{ "model": "ollama/llama3",             "messages": [...] }  // Local Ollama
+```
+
+All caching, routing, compression, and telemetry features work transparently regardless of which provider is used.
 
 ### Response (non-streaming)
 
@@ -98,7 +115,7 @@ Health check endpoint. Returns the server status and version.
 ```json
 {
   "status": "ok",
-  "version": "0.7.0"
+  "version": "1.0.0"
 }
 ```
 

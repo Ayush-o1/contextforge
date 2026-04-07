@@ -57,15 +57,24 @@ class ModelRouter:
         config_path: str = "config/routing_rules.yaml",
         preferred_provider: str = "openai",
         test_mode: bool = False,
+        simple_model: str | None = None,
+        complex_model: str | None = None,
     ) -> None:
         self._preferred_provider = preferred_provider
         self._test_mode = test_mode
         self._config = self._load_config(config_path)
+        # Runtime overrides take precedence over YAML model_map values
+        if simple_model:
+            self._config.model_map.setdefault(preferred_provider, {})["simple"] = simple_model
+        if complex_model:
+            self._config.model_map.setdefault(preferred_provider, {})["complex"] = complex_model
         logger.info(
             "router.loaded",
             provider=preferred_provider,
             simple_max_tokens=self._config.simple_max_tokens,
             complex_keywords_count=len(self._config.complex_keywords),
+            simple_model=self._config.model_map.get(preferred_provider, {}).get("simple"),
+            complex_model=self._config.model_map.get(preferred_provider, {}).get("complex"),
             test_mode=test_mode,
         )
 
@@ -190,12 +199,14 @@ class ModelRouter:
         tier, reason = self._classify(text, token_count)
         model_selected = self._select_model(tier, model_requested)
 
-        # TEST_MODE: always use cheapest model regardless of classification
+        # TEST_MODE: always use the configured simple model (cheapest tier)
         if self._test_mode:
-            cheap_map = {"openai": "gpt-3.5-turbo", "anthropic": "claude-3-haiku-20240307"}
-            model_selected = cheap_map.get(self._preferred_provider, "gpt-3.5-turbo")
+            simple_model = self._config.model_map.get(self._preferred_provider, {}).get(
+                "simple", self._config.default_model
+            )
+            model_selected = simple_model
             reason = f"test_mode:{reason}"
-            logger.info("router.test_mode", original_model=model_selected, forced_model=model_selected)
+            logger.info("router.test_mode", forced_model=model_selected)
 
         logger.info(
             "router.decision",

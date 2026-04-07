@@ -8,12 +8,12 @@
 
 | Item | Value |
 |------|-------|
-| **Last completed phase** | Phase 9 (Final Documentation & Handoff) |
+| **Last completed phase** | Phase 5 (Universal Tool-Use & Final Handoff) |
 | **Version** | `v1.0.0` |
-| **Tests** | 84 unit + E2E integration tests passing |
+| **Tests** | 132+ unit + integration tests passing |
 | **Lint** | ruff clean (zero errors) |
 | **Router accuracy** | 92.8% on 1000-prompt labeled dataset |
-| **Branch** | `main` has all phases merged |
+| **Branch** | `main` — all phases merged |
 | **Tags** | `v0.1.0` through `v1.0.0` (one per phase) |
 
 ---
@@ -202,15 +202,86 @@ All telemetry is stored locally in SQLite at `./data/telemetry.db`. No request d
 
 ---
 
+## How to Add a New LLM Provider
+
+Since ContextForge uses **LiteLLM** as its universal provider layer, adding support for any new provider takes less than 5 minutes and requires **zero code changes**.
+
+### Step 1 — Get the API key
+
+Sign up at the provider's developer portal and obtain an API key.
+
+### Step 2 — Add the key to `.env`
+
+```bash
+# Example: TogetherAI
+TOGETHER_API_KEY=your-key-here
+```
+
+LiteLLM reads provider keys directly from environment variables using the naming convention `{PROVIDER}_API_KEY`.
+
+### Step 3 — Use the provider-prefixed model name
+
+```python
+# In your request:
+{"model": "together_ai/mistralai/Mixtral-8x7B-Instruct-v0.1", ...}
+```
+
+LiteLLM's prefix routing automatically sends the request to the correct provider.
+
+### Step 4 (optional) — Register in the Router for failover
+
+Add the provider to `ProxyClient._build_model_list()` in `app/proxy.py`:
+
+```python
+if settings.together_api_key:
+    add("simple-tier", "together_ai/mistralai/Mixtral-8x7B-Instruct-v0.1", settings.together_api_key)
+```
+
+And add the corresponding config field in `app/config.py`:
+
+```python
+together_api_key: str = ""
+```
+
+### Step 5 (optional) — Update the translation guard
+
+If the new provider does **not** support function/tool calling, add its prefix to `_TOOL_UNSUPPORTED_PROVIDERS` in `app/proxy.py`:
+
+```python
+_TOOL_UNSUPPORTED_PROVIDERS: frozenset[str] = frozenset({
+    "ollama",
+    "ollama_chat",
+    "huggingface",
+    "replicate",
+    "your_new_provider",   # ← add here if no tool support
+})
+```
+
+### Supported Providers (LiteLLM handles all translation)
+
+| Provider | Prefix | Tool Support | Notes |
+|----------|--------|:---:|-------|
+| OpenAI | `openai/` | ✅ | Full function calling |
+| Anthropic | `anthropic/` | ✅ | Native tool use format |
+| Google Gemini | `gemini/` | ✅ | functionDeclarations format |
+| Groq | `groq/` | ✅ (llama3-70b+) | Not all models |
+| Mistral | `mistral/` | ✅ | |
+| Cohere | `cohere/` | ✅ | |
+| xAI (Grok) | `xai/` | ✅ | |
+| Ollama | `ollama/` | ❌ | Local only, no tools |
+| Together AI | `together_ai/` | ✅ | |
+| Bedrock | `bedrock/` | ✅ | |
+
+---
+
 ## What's Next
 
-All 9 phases are complete. Potential future enhancements:
+All 5 phases are complete. Potential future enhancements:
 
 - ML-based complexity classifier (replacing rule-based router)
-- Multi-provider load balancing
-- Prompt observability and tracing (OpenTelemetry)
-- Dashboard deployment as a hosted page
 - Qdrant migration for vector storage at scale
+- Dashboard deployment as a hosted page
+- Streaming tool-call support
 
 ## Related Documentation
 
@@ -222,3 +293,4 @@ All 9 phases are complete. Potential future enhancements:
 | [DASHBOARD.md](DASHBOARD.md) | Dashboard architecture and guide |
 | [CONFIGURATION.md](CONFIGURATION.md) | Environment variable reference |
 | [TROUBLESHOOTING.md](TROUBLESHOOTING.md) | Common issues and fixes |
+

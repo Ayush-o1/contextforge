@@ -15,6 +15,7 @@ from redis.asyncio import Redis
 
 from app import telemetry as tel
 from app.adaptive import ThresholdManager, get_active_threshold
+from app.api.admin import router as admin_router
 from app.cache import SemanticCache
 from app.compressor import compress_context
 from app.config import Settings, get_settings
@@ -32,6 +33,31 @@ logger = structlog.get_logger()
 async def lifespan(application: FastAPI) -> AsyncGenerator[None, None]:
     """Manage application lifecycle — initialize and teardown resources."""
     settings: Settings = get_settings()
+
+    # --- OpenTelemetry (opt-in) ---
+    if settings.enable_otel:
+        try:
+            from opentelemetry import trace  # type: ignore[import-untyped]
+            from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import (  # type: ignore[import-untyped]
+                OTLPSpanExporter,
+            )
+            from opentelemetry.sdk.trace import TracerProvider  # type: ignore[import-untyped]
+            from opentelemetry.sdk.trace.export import BatchSpanProcessor  # type: ignore[import-untyped]
+
+            _provider = TracerProvider()
+            _provider.add_span_processor(
+                BatchSpanProcessor(OTLPSpanExporter(endpoint=settings.otel_endpoint))
+            )
+            trace.set_tracer_provider(_provider)
+            import litellm as _litellm
+            if "otel" not in (_litellm.callbacks or []):
+                _litellm.callbacks = list(_litellm.callbacks or []) + ["otel"]
+            logger.info("otel.initialized", endpoint=settings.otel_endpoint)
+        except ImportError:
+            logger.warning(
+                "otel.sdk_not_installed",
+                hint="pip install opentelemetry-sdk opentelemetry-exporter-otlp-proto-grpc",
+            )
 
     # --- Proxy client ---
     proxy_client = ProxyClient(settings)
@@ -67,6 +93,8 @@ async def lifespan(application: FastAPI) -> AsyncGenerator[None, None]:
         config_path="config/routing_rules.yaml",
         preferred_provider=settings.preferred_provider,
         test_mode=settings.test_mode,
+        simple_model=settings.simple_model,
+        complex_model=settings.complex_model,
     )
     application.state.router = router
 
@@ -109,6 +137,9 @@ app.add_middleware(
 _dashboard_dir = Path(__file__).resolve().parent.parent / "docs" / "dashboard"
 if _dashboard_dir.exists():
     app.mount("/dashboard", StaticFiles(directory=str(_dashboard_dir), html=True), name="dashboard")
+
+# ─── Admin router (cost reporting, request log) ──────────────────────────
+app.include_router(admin_router)
 
 
 # ───────────────────────── Health Check ──────────────────────────────────

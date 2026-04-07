@@ -85,7 +85,7 @@ class TestModelRouter:
             [{"role": "user", "content": "Analyze this complex system architecture."}],
         )
         assert result.tier == Tier.COMPLEX
-        assert result.model_selected == "claude-3-opus-20240229"
+        assert result.model_selected == "claude-3-5-sonnet-20241022"
 
     def test_token_counting(self, router):
         """Token count is included in the routing decision."""
