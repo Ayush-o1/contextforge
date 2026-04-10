@@ -73,7 +73,7 @@ Thank you for your interest in contributing to ContextForge! Whether it's fixing
    PYTHONPATH=. pytest tests/ -v
    ```
 
-   All 84 tests should pass without any live API calls or running services.
+   All 149 tests should pass without any live API calls or running services.
 
 ---
 
@@ -154,6 +154,10 @@ PYTHONPATH=. pytest tests/test_cache.py::test_cache_hit -v
 | `test_adaptive.py` | 8 | Threshold tuning, min/max caps, endpoints |
 | `test_cache_invalidation.py` | 7 | Flush, invalidate, stats, idempotent flush |
 | `test_benchmarks.py` | 15 | Paraphrase, latency stats, routing accuracy |
+| `test_tool_use.py` | — | Tool-use passthrough, schema translation, multi-provider |
+| `test_failover.py` | — | LiteLLM failover routing, provider retry behavior |
+| `test_phase3.py` | — | Phase 3 end-to-end router integration |
+| **Total** | **149** | All pass without live API calls or running services |
 
 ---
 

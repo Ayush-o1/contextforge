@@ -73,13 +73,14 @@ Point your app at `localhost:8000` instead of `api.openai.com`. Same SDK, same A
 ```mermaid
 flowchart LR
     A["Your App"] -->|POST /v1/chat/completions| B["ContextForge Gateway"]
-    B --> X{"Context\nCompressor"}
+    B --> R{"Model\nRouter"}
+    R --> X{"Context\nCompressor"}
     X --> C{"Semantic\nCache Lookup"}
     C -->|"HIT (≥92% similar)"| T1["Telemetry Write"]
-    C -->|"MISS"| D["Model Router"]
+    C -->|"MISS"| D{"SIMPLE\nor COMPLEX?"}
     D -->|"SIMPLE"| E["gpt-3.5-turbo"]
     D -->|"COMPLEX"| F["gpt-4o"]
-    E --> G["Upstream API"]
+    E --> G["LiteLLM Gateway"]
     F --> G
     G --> I["Cache Store\nFAISS + Redis"]
     I --> T2["Telemetry Write"]
@@ -88,13 +89,13 @@ flowchart LR
 ```
 
 1. **Your app sends a request** — exactly like it would to OpenAI. No SDK changes, no wrapper code. You can specify provider-prefixed models like `groq/llama3-8b-8192` or `gemini/gemini-1.5-pro`.
-2. **Context compression** — if the conversation exceeds the token threshold (default: 2,000 tokens) and has enough turns (default: 6), older messages are summarized to reduce token usage. Skipped for short conversations or when `X-ContextForge-No-Compress: true` is set.
-3. **Semantic cache lookup** — the prompt is embedded using `all-MiniLM-L6-v2` and searched against a FAISS index. If a match is found at ≥92% cosine similarity, the cached response is returned in under 30ms.
-4. **Smart model routing** — on cache miss, a rule-based classifier analyzes token count and keyword signals. Simple prompts go to cheaper models; complex prompts go to the best available.
-5. **Upstream call (LiteLLM Gateway)** — the request is forwarded to the selected provider through LiteLLM, which handles auth, retries, and failover across 100+ providers automatically.
+2. **Smart model routing** — a rule-based classifier analyzes token count and keyword signals to select a model tier (simple or complex). The selected model is used for any upstream call made later.
+3. **Context compression** — if the conversation exceeds the token threshold (default: 2,000 tokens) and has enough turns (default: 6), older messages are summarized to reduce token usage. Skipped for short conversations or when `X-ContextForge-No-Compress: true` is set.
+4. **Semantic cache lookup** — the prompt is embedded using `all-MiniLM-L6-v2` and searched against a FAISS index. If a match is found at ≥92% cosine similarity, the cached response is returned in under 30ms.
+5. **Upstream call (LiteLLM Gateway)** — on cache miss, the request is forwarded to the selected provider through LiteLLM, which handles auth, retries, and failover across 100+ providers automatically.
 6. **Cache store** — the response is embedded and stored in FAISS + Redis for future lookups.
 7. **Telemetry** — every request is logged to a local SQLite database with model, latency, cost, cache hit status, and compression info. No data leaves your machine.
-8. **Response returned** — your app receives a standard OpenAI-compatible response with extra diagnostic headers.
+8. **Response returned** — your app receives a standard OpenAI-compatible response with diagnostic headers (`X-Cache`, `X-Model-Tier`, `X-Model-Selected`, `X-Compressed`).
 
 ---
 
@@ -177,7 +178,7 @@ $ curl -s -D- http://localhost:8000/v1/chat/completions \
   2>&1 | grep -E "^(X-|HTTP)"
 
 HTTP/1.1 200 OK
-X-Cache-Hit: false
+X-Cache: MISS
 X-Model-Tier: simple
 X-Model-Selected: gpt-3.5-turbo
 
@@ -189,7 +190,8 @@ $ curl -s -D- http://localhost:8000/v1/chat/completions \
   2>&1 | grep -E "^(X-|HTTP)"
 
 HTTP/1.1 200 OK
-X-Cache-Hit: true          ← semantically matched (different wording, same meaning)
+X-Cache: HIT               ← semantically matched (different wording, same meaning)
+X-Similarity: 0.97         ← cosine similarity score
 X-Model-Tier: simple
 X-Model-Selected: gpt-3.5-turbo
 
@@ -201,7 +203,7 @@ $ curl -s -D- http://localhost:8000/v1/chat/completions \
   2>&1 | grep -E "^(X-|HTTP)"
 
 HTTP/1.1 200 OK
-X-Cache-Hit: false
+X-Cache: MISS
 X-Model-Tier: complex       ← automatically detected
 X-Model-Selected: gpt-4o    ← upgraded from gpt-3.5-turbo
 ```
@@ -242,17 +244,25 @@ cp .env.example .env
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `OPENAI_API_KEY` | Your OpenAI API key | *(required for OpenAI)* |
-| `ANTHROPIC_API_KEY` | Your Anthropic API key | — |
-| `GEMINI_API_KEY` | Your Google Gemini API key | — |
-| `GROQ_API_KEY` | Your Groq API key | — |
-| `MISTRAL_API_KEY` | Your Mistral API key | — |
+| `ANTHROPIC_API_KEY` | Your Anthropic API key | `""` |
+| `GEMINI_API_KEY` | Your Google Gemini API key | `""` |
+| `GROQ_API_KEY` | Your Groq API key | `""` |
+| `MISTRAL_API_KEY` | Your Mistral AI API key | `""` |
+| `COHERE_API_KEY` | Your Cohere API key | `""` |
+| `XAI_API_KEY` | Your xAI (Grok) API key | `""` |
+| `OLLAMA_BASE_URL` | Ollama server URL | `http://localhost:11434` |
 | `PREFERRED_PROVIDER` | Default LLM provider | `openai` |
 | `SIMPLE_MODEL` | Model for simple/cheap prompts | `gpt-3.5-turbo` |
 | `COMPLEX_MODEL` | Model for complex/expensive prompts | `gpt-4o` |
 | `REDIS_URL` | Redis connection string | `redis://localhost:6379` |
 | `SIMILARITY_THRESHOLD` | Cosine similarity for cache hits (0.0–1.0) | `0.92` |
-| `CACHE_TTL_SECONDS` | Cache entry lifetime | `86400` (24h) |
-| `LOG_LEVEL` | Logging verbosity | `INFO` |
+| `CACHE_TTL_SECONDS` | Cache entry lifetime (seconds) | `86400` (24h) |
+| `COMPRESS_THRESHOLD` | Token count above which compression activates | `2000` |
+| `COMPRESS_MIN_TURNS` | Minimum conversation turns before compression | `6` |
+| `COMPRESS_KEEP_RECENT` | Recent turns to keep verbatim during compression | `4` |
+| `LOG_LEVEL` | Logging verbosity (`DEBUG`, `INFO`, `WARNING`, `ERROR`) | `INFO` |
+| `TEST_MODE` | Force cheapest model for all requests | `false` |
+| `ENABLE_OTEL` | Enable OpenTelemetry distributed tracing | `false` |
 
 For the full configuration reference with all variables, see [docs/CONFIGURATION.md](docs/CONFIGURATION.md).
 
@@ -281,10 +291,11 @@ ContextForge exposes an OpenAI-compatible API with additional management endpoin
 
 | Header | Description |
 |--------|-------------|
-| `X-Cache-Hit` | `true` if response came from cache |
+| `X-Cache` | `HIT` if response came from cache, `MISS` otherwise |
+| `X-Similarity` | Cosine similarity score (present on cache hit only) |
 | `X-Model-Tier` | `simple` or `complex` |
 | `X-Model-Selected` | Model actually used (e.g., `gpt-4o`) |
-| `X-Compressed` | `true` if context compression was applied |
+| `X-Compressed` | `True` if context compression was applied |
 | `X-Compression-Ratio` | Ratio of compressed to original tokens |
 
 For full request/response schemas, see [docs/API.md](docs/API.md).
@@ -422,7 +433,7 @@ python benchmarks/run_benchmark.py --dry-run
 | p95 latency | ≤ 5,000ms | 95th percentile response time |
 | Cache hit rate | ≥ 40% | Paraphrased replays served from cache |
 
-See [benchmarks/README.md](benchmarks/README.md) for full details.
+See [benchmarks/README.md](benchmarks/README.md) for full details on running benchmarks, interpreting results, and output format.
 
 ---
 

@@ -91,7 +91,7 @@ class ThresholdManager:
             new_threshold = max(current - STEP, thr_min)
 
         new_threshold = round(new_threshold, 4)
-        now = datetime.datetime.utcnow().isoformat()
+        now = datetime.datetime.now(datetime.timezone.utc).isoformat()
 
         with _lock:
             with self._conn() as conn:

@@ -6,6 +6,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ---
 
+## [v1.0.1] — 2026-04-10
+
+### Fixed
+- **`datetime.utcnow()` deprecation**: Replaced all `datetime.utcnow()` calls with `datetime.now(timezone.utc)` in `app/adaptive.py`, `app/middleware.py`, and `benchmarks/run_benchmark.py` to resolve Python 3.12+ `DeprecationWarning`.
+- **FAISS `remove_by_key` correctness**: `IndexFlatIP` does not support `remove_ids()`. `VectorStore.remove_by_key()` now rebuilds the index from remaining vectors (O(n), correct for cache sizes < 100k).
+- **FAISS flush atomicity**: `VectorStore.flush()` now removes both the `.index` and `.idmap` files together to prevent on-disk inconsistency.
+
+### Updated
+- **Gemini model versions**: Default Gemini routing updated from `gemini-1.5-flash` (simple tier) and `gemini-1.5-pro` (complex tier) to `gemini-2.0-flash` and `gemini-2.5-pro-preview-03-25` respectively.
+- **pytest config**: Added `asyncio_default_fixture_loop_scope = "function"` to `pyproject.toml` to suppress pytest-asyncio deprecation warnings.
+
+### Documentation
+- Full documentation audit: corrected all stale test counts (84 → 149), fixed response header names (`X-Cache-Hit` → `X-Cache: HIT/MISS`), corrected pipeline order (routing before compression), fixed broken environment variable names in `CONFIGURATION.md` (`CONTEXT_COMPRESSION_THRESHOLD_TOKENS` → `COMPRESS_THRESHOLD`), fixed wrong GitHub URL in `DEPLOYMENT.md`, updated supported version in `SECURITY.md` (0.7.x → 1.0.x), added missing env vars (`COHERE_API_KEY`, `XAI_API_KEY`, `COMPRESS_KEEP_RECENT`, `COMPRESS_SUMMARY_MODEL`, `TEST_MODE`, `ENABLE_OTEL`, etc.), and added internal-doc notices to `PHASES.md`, `PHASE_STUDY_BREAKDOWN.md`, and `STUDY_PREP_PLAN.md`.
+
+---
+
 ## [v1.0.0] — 2026-04-07
 
 ### Added — Full Multi-Provider Release

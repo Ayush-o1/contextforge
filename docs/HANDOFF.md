@@ -8,9 +8,9 @@
 
 | Item | Value |
 |------|-------|
-| **Last completed phase** | Phase 5 (Universal Tool-Use & Final Handoff) |
+| **Last completed phase** | v1.0.0 — All phases complete |
 | **Version** | `v1.0.0` |
-| **Tests** | 132+ unit + integration tests passing |
+| **Tests** | 149 unit + integration tests passing |
 | **Lint** | ruff clean (zero errors) |
 | **Router accuracy** | 92.8% on 1000-prompt labeled dataset |
 | **Branch** | `main` — all phases merged |
@@ -30,7 +30,7 @@ python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 
 # 3. Verify everything works
-PYTHONPATH=. pytest tests/ -v   # should be 84/84
+PYTHONPATH=. pytest tests/ -v   # should be 149/149
 
 # 4. Configure environment
 cp .env.example .env
@@ -172,9 +172,9 @@ The threshold self-tunes between `ADAPTIVE_THRESHOLD_MIN` (0.70) and `ADAPTIVE_T
 
 `GET /v1/cache/stats` and `DELETE /v1/cache` return partial results (vector count but 0 Redis keys) if Redis is not running. Errors are logged but don't crash the endpoint.
 
-### 13. `datetime.utcnow()` deprecation
+### 13. ~~`datetime.utcnow()` deprecation~~ (fixed in v1.0.1)
 
-`app/adaptive.py` uses `datetime.datetime.utcnow()` which shows a DeprecationWarning on Python 3.12+. Can be fixed by switching to `datetime.datetime.now(datetime.UTC)`.
+`app/adaptive.py`, `app/middleware.py`, and `benchmarks/run_benchmark.py` previously used `datetime.datetime.utcnow()` which showed a `DeprecationWarning` on Python 3.12+. All instances have been migrated to `datetime.datetime.now(datetime.timezone.utc)`.
 
 ### 14. Dashboard is a static site
 
@@ -198,7 +198,10 @@ All telemetry is stored locally in SQLite at `./data/telemetry.db`. No request d
 | `test_adaptive.py` | 8 | Threshold raise/lower/unchanged, min/max caps, DB write, endpoints |
 | `test_cache_invalidation.py` | 7 | Flush, invalidate, stats, idempotent flush, endpoint schemas |
 | `test_benchmarks.py` | 15 | Paraphrase, latency stats, routing accuracy, confusion matrix |
-| **Total** | **84** | All pass without live API calls or running services |
+| `test_tool_use.py` | — | Tool-use passthrough, schema translation, multi-provider tool calls |
+| `test_failover.py` | — | LiteLLM failover routing, provider retry behavior |
+| `test_phase3.py` | — | Phase 3 end-to-end router integration |
+| **Total** | **149** | All pass without live API calls or running services |
 
 ---
 

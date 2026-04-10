@@ -109,9 +109,11 @@ class VectorStore:
             self._id_map.clear()
 
     def flush(self) -> int:
-        """Clear the index and remove the persisted id_map file.
+        """Clear the index and remove both persisted files (.index + .idmap).
 
         Returns the number of vectors that were cleared.
+        Both files are removed together so the on-disk state is always
+        consistent — no orphaned FAISS index without an idmap, or vice-versa.
         """
         with self._lock:
             count = self._index.ntotal
@@ -119,6 +121,8 @@ class VectorStore:
             self._id_map.clear()
             if os.path.exists(self._id_map_path):
                 os.remove(self._id_map_path)
+            if os.path.exists(self._index_path):
+                os.remove(self._index_path)
             logger.info("vector_store.flushed", vectors_cleared=count)
             return count
 
@@ -126,14 +130,32 @@ class VectorStore:
         """Remove a single vector by its cache key.
 
         Returns True if the key was found and removed, False otherwise.
-        Uses FAISS ``remove_ids`` with the id-map index.
+
+        Note: IndexFlatIP does not support ``remove_ids()``.  We rebuild
+        the index from the remaining vectors, which is O(n) but correct
+        and safe for typical cache sizes (<100 k vectors).
         """
         with self._lock:
             if key not in self._id_map:
                 return False
             idx = self._id_map.index(key)
-            ids_to_remove = np.array([idx], dtype=np.int64)
-            self._index.remove_ids(ids_to_remove)
+
+            # Collect all vectors currently in the index
+            if self._index.ntotal > 0:
+                all_vectors = faiss.rev_swig_ptr(
+                    self._index.get_xb(), self._index.ntotal * self._dimension
+                ).reshape(self._index.ntotal, self._dimension).copy()
+            else:
+                all_vectors = np.empty((0, self._dimension), dtype=np.float32)
+
+            # Build a new index without the target vector
+            new_index = faiss.IndexFlatIP(self._dimension)
+            keep_mask = [i for i in range(len(self._id_map)) if i != idx]
+            if keep_mask:
+                remaining = np.ascontiguousarray(all_vectors[keep_mask], dtype=np.float32)
+                new_index.add(remaining)
+
+            self._index = new_index
             self._id_map.pop(idx)
             logger.debug("vector_store.removed", cache_key=key)
             return True

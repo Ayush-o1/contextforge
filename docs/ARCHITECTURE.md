@@ -114,12 +114,12 @@ Client Request (POST /v1/chat/completions)
          │
          ▼
 ┌─────────────────┐
-│  Return Response │  + X-Cache-Hit, X-Model-Tier, X-Model-Selected,
-│                  │    X-Compressed, X-Compression-Ratio headers
+│  Return Response │  + X-Cache (HIT/MISS), X-Model-Tier, X-Model-Selected,
+│                  │    X-Compressed, X-Compression-Ratio, X-Similarity headers
 └──────────────────┘
 ```
 
-**Non-streaming:** Request → Validate → Router → Compressor → Cache Lookup → LiteLLM Gateway → Cache Store → Telemetry → Response
+**Non-streaming:** Request → Validate → Router (classify + select model) → Compressor → Cache Lookup → LiteLLM Gateway → Cache Store → Telemetry → Response
 
 **Streaming:** Request → Validate → Router → LiteLLM Gateway (bypasses compression and caching entirely)
 

@@ -252,7 +252,8 @@ class ProxyClient:
             add("simple-tier", "groq/llama3-8b-8192", settings.groq_api_key)
             add("groq/llama3-8b-8192", "groq/llama3-8b-8192", settings.groq_api_key)
         if settings.gemini_api_key:
-            add("simple-tier", "gemini/gemini-1.5-flash", settings.gemini_api_key)
+            add("simple-tier", "gemini/gemini-2.0-flash", settings.gemini_api_key)
+            add("gemini-2.0-flash", "gemini/gemini-2.0-flash", settings.gemini_api_key)
 
         # ── Complex tier ─────
         if settings.openai_api_key:
@@ -262,8 +263,8 @@ class ProxyClient:
             add("complex-tier", "anthropic/claude-3-5-sonnet-20241022", settings.anthropic_api_key)
             add("claude-3-5-sonnet", "anthropic/claude-3-5-sonnet-20241022", settings.anthropic_api_key)
         if settings.gemini_api_key:
-            add("complex-tier", "gemini/gemini-1.5-pro", settings.gemini_api_key)
-            add("gemini-1.5-pro", "gemini/gemini-1.5-pro", settings.gemini_api_key)
+            add("complex-tier", "gemini/gemini-2.5-pro-preview-03-25", settings.gemini_api_key)
+            add("gemini-2.5-pro", "gemini/gemini-2.5-pro-preview-03-25", settings.gemini_api_key)
 
         # ── Ensure at least one entry so Router doesn't fail on init ─────
         if not entries:
@@ -289,7 +290,7 @@ class ProxyClient:
         if settings.anthropic_api_key:
             gpt4o_fallbacks.append("claude-3-5-sonnet")
         if settings.gemini_api_key:
-            gpt4o_fallbacks.append("gemini-1.5-pro")
+            gpt4o_fallbacks.append("gemini-2.5-pro")
         if gpt4o_fallbacks:
             fallbacks.append({"gpt-4o": gpt4o_fallbacks})
             fallbacks.append({"complex-tier": gpt4o_fallbacks})
@@ -299,7 +300,7 @@ class ProxyClient:
         if settings.groq_api_key:
             gpt35_fallbacks.append("groq/llama3-8b-8192")
         if settings.gemini_api_key:
-            gpt35_fallbacks.append("gemini-1.5-flash")
+            gpt35_fallbacks.append("gemini-2.0-flash")
         if gpt35_fallbacks:
             fallbacks.append({"gpt-3.5-turbo": gpt35_fallbacks})
             fallbacks.append({"simple-tier": gpt35_fallbacks})

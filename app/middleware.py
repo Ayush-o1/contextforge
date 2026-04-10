@@ -1,7 +1,7 @@
 # Phase 1 implementation
 import time
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 
 from fastapi import Request
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -27,7 +27,7 @@ class TelemetryMiddleware(BaseHTTPMiddleware):
         state = request.state
         telemetry.write_record({
             "request_id": request_id,
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "model_requested": getattr(state, "model_requested", None),
             "model_used": getattr(state, "model_used", None),
             "cache_hit": getattr(state, "cache_hit", False),

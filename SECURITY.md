@@ -38,5 +38,5 @@ ContextForge is designed to run as a **local proxy** between your application an
 
 | Version | Supported |
 |---------|:---------:|
-| 0.7.x | ✅ |
-| < 0.7 | ❌ |
+| 1.0.x | ✅ |
+| < 1.0 | ❌ |

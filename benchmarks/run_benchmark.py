@@ -251,7 +251,7 @@ def _run_dry_run() -> BenchmarkResult:
     lat_stats = compute_latency_stats(latencies)
 
     result = BenchmarkResult(
-        timestamp=datetime.datetime.utcnow().isoformat(),
+        timestamp=datetime.datetime.now(datetime.timezone.utc).isoformat(),
         cache_hit_rate=cache_hit_rate,
         avg_latency_miss_ms=avg_miss,
         avg_latency_hit_ms=avg_hit,
@@ -280,7 +280,7 @@ def _run_live() -> BenchmarkResult:
     latency_result = _run_latency_benchmark(prompts)
 
     result = BenchmarkResult(
-        timestamp=datetime.datetime.utcnow().isoformat(),
+        timestamp=datetime.datetime.now(datetime.timezone.utc).isoformat(),
         cache_hit_rate=cache_result["cache_hit_rate"],
         avg_latency_miss_ms=cache_result["avg_latency_miss_ms"],
         avg_latency_hit_ms=cache_result["avg_latency_hit_ms"],
@@ -343,7 +343,7 @@ def main() -> int:
 
     # Save results to JSON
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
-    ts = datetime.datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+    ts = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%d_%H%M%S")
     out_path = RESULTS_DIR / f"benchmark_{ts}.json"
     out_path.write_text(json.dumps(result.to_dict(), indent=2))
     print(f"\n📄 Results saved to {out_path}")

@@ -1,5 +1,7 @@
 # ContextForge — Team Phase Assignments
 
+> **Internal document.** This file records the original team phase assignments used during development. It is preserved for historical reference. For contributing, see [CONTRIBUTING.md](CONTRIBUTING.md).
+
 This document defines ownership for the remaining work on ContextForge.
 Each person owns their assigned files, implementation, tests, and documentation updates for their phase.
 

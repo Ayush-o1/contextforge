@@ -85,11 +85,12 @@ All caching, routing, compression, and telemetry features work transparently reg
 
 | Header | Values | Description |
 |--------|--------|-------------|
-| `X-Cache-Hit` | `true` / `false` | Whether the response came from the semantic cache |
+| `X-Cache` | `HIT` / `MISS` | Whether the response came from the semantic cache |
 | `X-Model-Tier` | `simple` / `complex` | How the router classified the prompt |
 | `X-Model-Selected` | e.g., `gpt-3.5-turbo`, `gpt-4o` | The model actually used for the upstream call |
-| `X-Compressed` | `true` / `false` | Whether context compression was applied |
+| `X-Compressed` | `True` / `False` | Whether context compression was applied |
 | `X-Compression-Ratio` | e.g., `0.65` | Ratio of compressed to original token count |
+| `X-Similarity` | e.g., `0.97` | Cosine similarity score (only present on cache hit) |
 
 ### Special Request Headers
 

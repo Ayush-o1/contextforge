@@ -105,7 +105,7 @@ If you prefer to self-host on a VPS (DigitalOcean, AWS EC2, Linode, etc.):
 
 ```bash
 # On your VPS
-git clone https://github.com/aayush-1o/contextforge.git
+git clone https://github.com/Ayush-o1/contextforge.git
 cd contextforge
 
 # Configure
