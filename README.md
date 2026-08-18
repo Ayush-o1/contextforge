@@ -1,323 +1,69 @@
-<p align="center">
-  <img src="./docs/assets/architecture.png" alt="ContextForge Architecture" width="100%"/>
-</p>
+# ContextForge
 
-<h1 align="center">ContextForge</h1>
+**An OpenAI-compatible LLM proxy middleware built with Python/FastAPI.**
 
-<p align="center">
-  <strong>An OpenAI-compatible LLM proxy middleware that reduces cost and latency using LiteLLM for 100+ provider support, semantic caching, model routing, and context compression.</strong><br/>
-  Point your app at <code>localhost:8000</code>. Same SDK, same API — instant access to OpenAI, Anthropic, Gemini, Groq, Mistral, and Ollama.
-</p>
+Point your app at `localhost:8000` instead of `api.openai.com`. ContextForge sits in between, applying semantic caching, rule-based model routing, and context compression before forwarding requests through LiteLLM to 100+ providers.
 
-<p align="center">
-  <a href="https://github.com/Ayush-o1/contextforge/actions/workflows/ci.yml"><img src="https://github.com/Ayush-o1/contextforge/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
-  <img src="https://img.shields.io/badge/tests-149%20passed-brightgreen" alt="Tests">
-  <img src="https://img.shields.io/badge/python-3.11+-blue" alt="Python 3.11+">
-  <img src="https://img.shields.io/badge/license-MIT-green" alt="License: MIT">
-  <img src="https://img.shields.io/badge/version-1.0.0-orange" alt="Version">
-</p>
+[![CI](https://github.com/Ayush-o1/contextforge/actions/workflows/ci.yml/badge.svg)](https://github.com/Ayush-o1/contextforge/actions/workflows/ci.yml)
+![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue)
+![License: MIT](https://img.shields.io/badge/license-MIT-green)
 
 ---
 
-## Table of Contents
+## What It Does
 
-- [Why ContextForge?](#why-contextforge)
-- [How It Works](#how-it-works)
-- [Quick Start](#quick-start)
-- [Demo](#demo)
-- [Dashboard](#dashboard)
-- [Configuration](#configuration)
-- [API Overview](#api-overview)
-- [Tech Stack](#tech-stack)
-- [Project Structure](#project-structure)
-- [Testing](#testing)
-- [Benchmarks](#benchmarks)
-- [Roadmap](#roadmap)
-- [Documentation](#documentation)
-- [Contributors](#contributors)
-- [Contributing](#contributing)
-- [License](#license)
-- [Contact](#contact)
+1. **Model routing** — classifies each prompt as `simple` or `complex` using token count and keyword rules, then selects the appropriate model tier (e.g. `gpt-3.5-turbo` vs `gpt-4o`). Configurable via `config/routing_rules.yaml`.
 
----
+2. **Context compression** — when a conversation exceeds a token threshold (default: 2,000 tokens) and has enough turns (default: 6), older messages are summarized via an LLM call, reducing upstream token usage.
 
-## Why ContextForge?
+3. **Semantic caching** — prompts are embedded using `all-MiniLM-L6-v2` and searched against a FAISS index. On a match above the cosine similarity threshold (default: 0.92), the cached response is returned from Redis without an upstream API call.
 
-Most LLM-powered apps send every prompt to the most expensive model, even when a cached answer or a cheaper model would work just fine. ContextForge fixes that — transparently.
+4. **LiteLLM forwarding** — cache misses are forwarded to the LLM provider through LiteLLM Router, which handles auth, retries, and automatic failover across providers.
 
-Point your app at `localhost:8000` instead of `api.openai.com`. Same SDK, same API, same code. Behind the scenes, ContextForge routes through **LiteLLM** — a universal gateway supporting 100+ providers — and applies optimizations before anything hits a paid API:
-
-|  | Without ContextForge | With ContextForge |
-|--|----------------------|-------------------|
-| **Cost per request** | Full price, every time | Cached hits are **free**, simple prompts routed to cheaper models |
-| **Latency on repeat queries** | 500ms–2s (full API round-trip) | **< 30ms** from local cache |
-| **Code changes needed** | — | **Zero** — just change the base URL |
-| **Provider support** | Hardcoded to one vendor | **100+ providers** via LiteLLM (OpenAI, Gemini, Groq, Anthropic, Mistral, Ollama …) |
-| **Vendor lock-in** | Tied to one provider | Swap models or providers via a single env var |
-
-### Key Features
-
-| Feature | Description |
-|---------|-------------|
-| 🔌 **Unified API** | One interface for OpenAI, Anthropic, Gemini, Groq, Mistral, and Ollama |
-| ⚡ **Semantic Caching** | Redis-backed caching returns instant responses for semantically similar prompts |
-| 🧠 **Intelligent Routing** | Automatic failovers and complexity-based routing to simple/complex model tiers |
-| ✂️ **Context Compression** | Automatic summarization of long conversation histories to reduce token usage |
-| 📊 **Telemetry** | Per-request cost tracking, latency monitoring, and aggregated savings reports |
-
----
-
-## How It Works
-
-
-```mermaid
-flowchart LR
-    A["Your App"] -->|POST /v1/chat/completions| B["ContextForge Gateway"]
-    B --> R{"Model\nRouter"}
-    R --> X{"Context\nCompressor"}
-    X --> C{"Semantic\nCache Lookup"}
-    C -->|"HIT (≥92% similar)"| T1["Telemetry Write"]
-    C -->|"MISS"| D{"SIMPLE\nor COMPLEX?"}
-    D -->|"SIMPLE"| E["gpt-3.5-turbo"]
-    D -->|"COMPLEX"| F["gpt-4o"]
-    E --> G["LiteLLM Gateway"]
-    F --> G
-    G --> I["Cache Store\nFAISS + Redis"]
-    I --> T2["Telemetry Write"]
-    T1 --> H["Return Response"]
-    T2 --> H
-```
-
-1. **Your app sends a request** — exactly like it would to OpenAI. No SDK changes, no wrapper code. You can specify provider-prefixed models like `groq/llama3-8b-8192` or `gemini/gemini-1.5-pro`.
-2. **Smart model routing** — a rule-based classifier analyzes token count and keyword signals to select a model tier (simple or complex). The selected model is used for any upstream call made later.
-3. **Context compression** — if the conversation exceeds the token threshold (default: 2,000 tokens) and has enough turns (default: 6), older messages are summarized to reduce token usage. Skipped for short conversations or when `X-ContextForge-No-Compress: true` is set.
-4. **Semantic cache lookup** — the prompt is embedded using `all-MiniLM-L6-v2` and searched against a FAISS index. If a match is found at ≥92% cosine similarity, the cached response is returned in under 30ms.
-5. **Upstream call (LiteLLM Gateway)** — on cache miss, the request is forwarded to the selected provider through LiteLLM, which handles auth, retries, and failover across 100+ providers automatically.
-6. **Cache store** — the response is embedded and stored in FAISS + Redis for future lookups.
-7. **Telemetry** — every request is logged to a local SQLite database with model, latency, cost, cache hit status, and compression info. No data leaves your machine.
-8. **Response returned** — your app receives a standard OpenAI-compatible response with diagnostic headers (`X-Cache`, `X-Model-Tier`, `X-Model-Selected`, `X-Compressed`).
-
----
-
-## Quick Start
-
-### Option A: Docker (recommended)
-
-```bash
-# Clone the repository
-git clone https://github.com/Ayush-o1/contextforge.git
-cd contextforge
-
-# Configure environment
-cp .env.example .env
-nano .env   # add your OPENAI_API_KEY
-
-# Start the services
-docker compose up --build -d
-
-# Verify
-curl http://localhost:8000/health
-# → {"status":"ok","version":"1.0.0"}
-```
-
-### Option B: Local Development
-
-```bash
-# Clone and set up
-git clone https://github.com/Ayush-o1/contextforge.git
-cd contextforge
-
-# Create a virtual environment
-python -m venv .venv
-source .venv/bin/activate
-
-# Install dependencies
-pip install -r requirements.txt
-
-# Configure environment
-cp .env.example .env
-# Add your OPENAI_API_KEY to .env
-
-# Start Redis (required)
-docker run -d -p 6379:6379 redis:7-alpine
-
-# Run the server
-uvicorn app.main:app --host 0.0.0.0 --port 8000
-```
-
-### Use It
-
-```python
-import openai
-
-client = openai.OpenAI(
-    base_url="http://localhost:8000/v1",
-    api_key="your-openai-key",
-)
-
-response = client.chat.completions.create(
-    model="gpt-3.5-turbo",
-    messages=[{"role": "user", "content": "What is the capital of France?"}],
-)
-
-print(response.choices[0].message.content)
-```
-
-That's it. Your existing code works unchanged — just swap the base URL.
-
----
-
-## Demo
-
-```bash
-# First request — cache miss, routed to gpt-3.5-turbo
-$ curl -s -D- http://localhost:8000/v1/chat/completions \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer $OPENAI_API_KEY" \
-  -d '{"model":"gpt-3.5-turbo","messages":[{"role":"user","content":"What is the capital of France?"}]}' \
-  2>&1 | grep -E "^(X-|HTTP)"
-
-HTTP/1.1 200 OK
-X-Cache: MISS
-X-Model-Tier: simple
-X-Model-Selected: gpt-3.5-turbo
-
-# Same question, different wording — instant cache hit
-$ curl -s -D- http://localhost:8000/v1/chat/completions \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer $OPENAI_API_KEY" \
-  -d '{"model":"gpt-3.5-turbo","messages":[{"role":"user","content":"What'\''s the capital of France?"}]}' \
-  2>&1 | grep -E "^(X-|HTTP)"
-
-HTTP/1.1 200 OK
-X-Cache: HIT               ← semantically matched (different wording, same meaning)
-X-Similarity: 0.97         ← cosine similarity score
-X-Model-Tier: simple
-X-Model-Selected: gpt-3.5-turbo
-
-# Complex prompt — automatically routed to gpt-4o
-$ curl -s -D- http://localhost:8000/v1/chat/completions \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer $OPENAI_API_KEY" \
-  -d '{"model":"gpt-3.5-turbo","messages":[{"role":"user","content":"Analyze the time complexity of Dijkstra'\''s algorithm with a Fibonacci heap vs binary heap"}]}' \
-  2>&1 | grep -E "^(X-|HTTP)"
-
-HTTP/1.1 200 OK
-X-Cache: MISS
-X-Model-Tier: complex       ← automatically detected
-X-Model-Selected: gpt-4o    ← upgraded from gpt-3.5-turbo
-```
-
----
-
-## Dashboard
-
-ContextForge includes a telemetry dashboard that visualizes request data in real time.
-
-![Dashboard](./docs/assets/dashboard-overview.png)
-
-Open `docs/dashboard/index.html` in your browser. The dashboard auto-detects the backend:
-- **Backend running** → shows live data with an "API Connected" badge
-- **Backend down** → falls back to mock data for demos
-
-The dashboard shows:
-- Total requests, cache hit rate, avg latency, and cost
-- Requests over time and model distribution charts
-- Full request log with search and filters
-- Cache stats and similarity distribution
-- Latency, cost, and hit rate trends
-
-For full details, see [docs/DASHBOARD.md](docs/DASHBOARD.md).
-
----
-
-## Configuration
-
-All settings are managed via environment variables in a `.env` file. Copy `.env.example` to get started:
-
-```bash
-cp .env.example .env
-```
-
-### Key Variables
-
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `OPENAI_API_KEY` | Your OpenAI API key | *(required for OpenAI)* |
-| `ANTHROPIC_API_KEY` | Your Anthropic API key | `""` |
-| `GEMINI_API_KEY` | Your Google Gemini API key | `""` |
-| `GROQ_API_KEY` | Your Groq API key | `""` |
-| `MISTRAL_API_KEY` | Your Mistral AI API key | `""` |
-| `COHERE_API_KEY` | Your Cohere API key | `""` |
-| `XAI_API_KEY` | Your xAI (Grok) API key | `""` |
-| `OLLAMA_BASE_URL` | Ollama server URL | `http://localhost:11434` |
-| `PREFERRED_PROVIDER` | Default LLM provider | `openai` |
-| `SIMPLE_MODEL` | Model for simple/cheap prompts | `gpt-3.5-turbo` |
-| `COMPLEX_MODEL` | Model for complex/expensive prompts | `gpt-4o` |
-| `REDIS_URL` | Redis connection string | `redis://localhost:6379` |
-| `SIMILARITY_THRESHOLD` | Cosine similarity for cache hits (0.0–1.0) | `0.92` |
-| `CACHE_TTL_SECONDS` | Cache entry lifetime (seconds) | `86400` (24h) |
-| `COMPRESS_THRESHOLD` | Token count above which compression activates | `2000` |
-| `COMPRESS_MIN_TURNS` | Minimum conversation turns before compression | `6` |
-| `COMPRESS_KEEP_RECENT` | Recent turns to keep verbatim during compression | `4` |
-| `LOG_LEVEL` | Logging verbosity (`DEBUG`, `INFO`, `WARNING`, `ERROR`) | `INFO` |
-| `TEST_MODE` | Force cheapest model for all requests | `false` |
-| `ENABLE_OTEL` | Enable OpenTelemetry distributed tracing | `false` |
-
-For the full configuration reference with all variables, see [docs/CONFIGURATION.md](docs/CONFIGURATION.md).
-
----
-
-## API Overview
-
-ContextForge exposes an OpenAI-compatible API with additional management endpoints.
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `POST` | `/v1/chat/completions` | Chat completions (OpenAI-compatible, tools supported) |
-| `GET` | `/health` | Health check |
-| `GET` | `/v1/telemetry` | Paginated telemetry records |
-| `GET` | `/v1/telemetry/summary` | Aggregated telemetry stats |
-| `GET` | `/v1/threshold` | Current adaptive threshold info |
-| `POST` | `/v1/threshold/evaluate` | Trigger threshold evaluation |
-| `GET` | `/v1/cache/stats` | Cache statistics |
-| `DELETE` | `/v1/cache` | Flush entire cache |
-| `DELETE` | `/v1/cache/{key}` | Invalidate a specific cache entry |
-| `GET` | `/admin/usage` | Cost/token usage summary with filters |
-| `GET` | `/admin/logs` | Paginated raw request log |
-| `GET` | `/admin/savings` | Total savings (cache + routing) breakdown |
-
-**Response headers** on `/v1/chat/completions`:
-
-| Header | Description |
-|--------|-------------|
-| `X-Cache` | `HIT` if response came from cache, `MISS` otherwise |
-| `X-Similarity` | Cosine similarity score (present on cache hit only) |
-| `X-Model-Tier` | `simple` or `complex` |
-| `X-Model-Selected` | Model actually used (e.g., `gpt-4o`) |
-| `X-Compressed` | `True` if context compression was applied |
-| `X-Compression-Ratio` | Ratio of compressed to original tokens |
-
-For full request/response schemas, see [docs/API.md](docs/API.md).
+5. **Telemetry** — every request is logged to a local SQLite database (model, latency, cost, cache hit, compression). An admin API and a static HTML dashboard visualize this data.
 
 ---
 
 ## Tech Stack
 
-| Component | Technology | Why |
-|-----------|-----------|-----|
-| Web framework | **FastAPI** (Python 3.11) | Async-first, OpenAPI auto-docs |
-| **LLM Gateway** | **LiteLLM** | 100+ provider support, unified interface |
-| Embeddings | **all-MiniLM-L6-v2** | CPU-fast, 384-dim, no GPU needed |
-| Vector search | **FAISS** (IndexFlatIP) | In-process, zero infra |
-| Cache store | **Redis 7** | TTL support, fast KV reads |
-| Token counting | **tiktoken** | Model-specific, fast |
-| Telemetry | **SQLite** (via SQLModel) | Zero infra, single-file |
-| Config | **Pydantic Settings** + `.env` | Type-safe, validated at startup |
-| Logging | **structlog** | Structured JSON logs |
-| Testing | **pytest** + **httpx** | Fixture-based, no live API calls |
-| Containerization | **Docker** + Docker Compose | One-command deployment |
-| Linting | **ruff** | Fast, replaces flake8 + isort |
+| Component | Technology |
+|-----------|-----------|
+| Web framework | FastAPI (Python 3.11) + Uvicorn |
+| LLM gateway | LiteLLM Router |
+| Embeddings | `sentence-transformers/all-MiniLM-L6-v2` (384-dim, CPU) |
+| Vector search | FAISS (`IndexFlatIP`) |
+| Cache store | Redis 7 |
+| Token counting | tiktoken |
+| Telemetry DB | SQLite (raw `sqlite3`, two tables) |
+| Config | Pydantic Settings + `.env` |
+| Logging | structlog (structured JSON) |
+| Testing | pytest + httpx (no live API calls required) |
+| Linting | ruff |
+| Containerization | Docker + Docker Compose |
+
+---
+
+## Architecture
+
+```
+Your App
+    |
+    v  POST /v1/chat/completions
+ContextForge (FastAPI)
+    |
+    +-- 1. ModelRouter         -- token count + keyword -> simple/complex tier
+    +-- 2. compress_context()  -- summarize old turns if token threshold exceeded
+    +-- 3. SemanticCache.lookup() -- embed prompt -> FAISS search -> Redis fetch
+    |       +-- HIT  -> return cached response (no upstream call)
+    |       +-- MISS -> forward to LiteLLM Router
+    |                    +-- LiteLLM -> Provider API (OpenAI/Anthropic/Gemini/etc.)
+    +-- 4. SemanticCache.store() -- embed + store in FAISS + Redis
+    +-- 5. TelemetryMiddleware  -- write request record to SQLite
+```
+
+**Streaming requests** (`"stream": true`) bypass cache and compression and are forwarded directly.
+
+**Adaptive threshold** — `ThresholdManager` periodically adjusts the FAISS similarity threshold up or down based on observed cache hit rates from the telemetry table.
 
 ---
 
@@ -326,223 +72,270 @@ For full request/response schemas, see [docs/API.md](docs/API.md).
 ```
 contextforge/
 ├── app/
-│   ├── api/
-│   │   ├── __init__.py          # API sub-package
-│   │   └── admin.py             # Admin endpoints: /admin/usage, /admin/logs, /admin/savings
-│   ├── main.py              # FastAPI app, lifespan, all endpoints
-│   ├── proxy.py             # Upstream forwarding — tool translation guard, callbacks
-│   ├── models.py            # Pydantic request/response schemas (tools, tool_calls)
-│   ├── config.py            # Pydantic Settings (loads .env, OTel, compression config)
-│   ├── cache.py             # Semantic cache (FAISS + Redis)
+│   ├── main.py              # FastAPI app, lifespan, all route handlers
+│   ├── proxy.py             # LiteLLM Router client, streaming, tool-call guard
+│   ├── router.py            # Rule-based complexity classifier (ModelRouter)
+│   ├── compressor.py        # Context compression (summarize old turns)
+│   ├── cache.py             # SemanticCache -- coordinates FAISS + Redis
 │   ├── embedder.py          # Sentence-transformer embedding wrapper
-│   ├── vector_store.py      # FAISS index with thread-safe writes
-│   ├── router.py            # Rule-based complexity classifier
-│   ├── compressor.py        # Context compression (summarization + metadata)
-│   ├── costs.py             # Per-model cost estimation (static fallback)
-│   ├── telemetry.py         # SQLite telemetry — request_log, get_total_savings()
-│   ├── adaptive.py          # Adaptive threshold manager
-│   └── middleware.py        # Request wrapping middleware
+│   ├── vector_store.py      # FAISS index with thread-safe writes + persistence
+│   ├── adaptive.py          # Adaptive similarity threshold (ThresholdManager)
+│   ├── telemetry.py         # SQLite writer/reader (telemetry + request_log tables)
+│   ├── costs.py             # Per-model cost estimation (static fallback table)
+│   ├── models.py            # Pydantic schemas (ChatCompletionRequest, responses)
+│   ├── config.py            # Pydantic Settings (loads .env)
+│   ├── middleware.py        # TelemetryMiddleware -- writes per-request record
+│   └── api/
+│       └── admin.py         # /admin/usage, /admin/logs, /admin/savings
 ├── config/
-│   └── routing_rules.yaml   # Token thresholds, keywords, model mappings
-├── tests/
-│   ├── conftest.py          # Shared fixtures (mock Redis, FAISS, etc.)
-│   ├── test_proxy.py        # 12 tests — health, completions, streaming, errors
-│   ├── test_cache.py        # 14 tests — VectorStore, SemanticCache, endpoints
-│   ├── test_router.py       # 18 tests — classifier, 1000-prompt accuracy
-│   ├── test_compressor.py   # 5 tests — token counting, thresholds, fallback
-│   ├── test_telemetry.py    # 5 tests — write/read, summary, cost, dedup
-│   ├── test_adaptive.py     # 8 tests — threshold tuning, caps, endpoints
-│   ├── test_cache_invalidation.py  # 7 tests — flush, invalidate, stats
-│   └── test_benchmarks.py   # 15 tests — paraphrase, latency, accuracy
-├── benchmarks/
-│   ├── run_benchmark.py     # E2E benchmark runner
-│   ├── benchmark_utils.py   # Paraphrase, latency stats, accuracy
-│   └── prompts_labeled.json # 1000 labeled prompts for testing
+│   └── routing_rules.yaml   # Token thresholds, keywords, model-tier mappings
 ├── docs/
-│   ├── ARCHITECTURE.md      # System design and component diagram
-│   ├── API.md               # Full API reference
-│   ├── CONFIGURATION.md     # Environment variable reference
-│   ├── DASHBOARD.md         # Dashboard architecture and guide
-│   ├── HANDOFF.md           # Developer onboarding guide
-│   ├── SETUP.md             # Local development setup
-│   ├── TROUBLESHOOTING.md   # Common issues and fixes
-│   ├── assets/              # Screenshots and diagrams
-│   └── dashboard/           # Interactive telemetry dashboard (static)
-│       ├── index.html
-│       ├── css/style.css
-│       └── js/{app,charts,data,tables,ui}.js
+│   ├── dashboard/           # Static HTML/CSS/JS telemetry dashboard
+│   │   └── index.html       # Open in browser; auto-connects to running backend
+│   └── assets/              # Screenshots
+├── tests/                   # pytest suite (no live API calls)
+│   ├── conftest.py          # Shared fixtures (mock Redis, FAISS)
+│   ├── test_proxy.py
+│   ├── test_cache.py
+│   ├── test_router.py
+│   ├── test_compressor.py
+│   ├── test_telemetry.py
+│   ├── test_adaptive.py
+│   ├── test_cache_invalidation.py
+│   ├── test_benchmarks.py
+│   ├── test_tool_use.py
+│   ├── test_failover.py
+│   └── test_phase3.py
+├── benchmarks/
+│   ├── run_benchmark.py     # E2E benchmark runner (requires running server)
+│   ├── benchmark_utils.py
+│   └── prompts_labeled.json # 1,000 labeled prompts for routing accuracy tests
 ├── .github/workflows/
-│   └── ci.yml               # GitHub Actions: lint + test + benchmark
-├── docker-compose.yml       # App + Redis services
-├── Dockerfile               # Python 3.11 container
-├── requirements.txt         # Pinned Python dependencies
-├── .env.example             # Environment variable template
-├── DECISIONS.md             # Architecture Decision Records
-├── CHANGELOG.md             # Version history
-├── CONTRIBUTING.md          # Contribution guidelines
-├── CODE_OF_CONDUCT.md       # Community standards
-├── SECURITY.md              # Security policy
-└── LICENSE                  # MIT License
+│   ├── ci.yml               # Lint + test on push/PR
+│   └── deploy.yml           # Railway deployment
+├── docker-compose.yml       # App + Redis
+├── Dockerfile               # Multi-stage Python 3.11 image
+├── requirements.txt
+├── pyproject.toml           # ruff + pytest config
+└── .env.example             # All environment variables with comments
 ```
+
+---
+
+## Local Setup
+
+### Prerequisites
+
+- Python 3.11+
+- Redis (required for the semantic cache)
+- At least one LLM provider API key
+
+### Option A: Docker (simplest)
+
+```bash
+git clone https://github.com/Ayush-o1/contextforge.git
+cd contextforge
+
+cp .env.example .env
+# Edit .env -- add your OPENAI_API_KEY (or any other provider key)
+
+docker compose up --build -d
+
+curl http://localhost:8000/health
+# -> {"status":"ok","version":"1.0.0"}
+```
+
+### Option B: Local development
+
+```bash
+git clone https://github.com/Ayush-o1/contextforge.git
+cd contextforge
+
+python -m venv .venv
+source .venv/bin/activate
+
+pip install -r requirements.txt
+
+cp .env.example .env
+# Edit .env -- add at least one LLM provider API key
+
+# Start Redis separately
+docker run -d -p 6379:6379 redis:7-alpine
+
+# Run the server
+uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+```
+
+### Usage
+
+No code changes needed. Change the `base_url` in your existing OpenAI SDK calls:
+
+```python
+import openai
+
+client = openai.OpenAI(
+    base_url="http://localhost:8000/v1",
+    api_key="your-api-key",
+)
+
+response = client.chat.completions.create(
+    model="gpt-3.5-turbo",
+    messages=[{"role": "user", "content": "What is the capital of France?"}],
+)
+print(response.choices[0].message.content)
+```
+
+Responses include diagnostic headers:
+
+| Header | Value |
+|--------|-------|
+| `X-Cache` | `HIT` or `MISS` |
+| `X-Similarity` | Cosine similarity score (on cache hit) |
+| `X-Model-Tier` | `simple` or `complex` |
+| `X-Model-Selected` | Actual model used (e.g. `gpt-4o`) |
+| `X-Compressed` | `True` if context compression ran |
+| `X-Compression-Ratio` | Ratio of compressed to original tokens |
+
+---
+
+## Environment Variables
+
+Copy `.env.example` to `.env` and fill in your keys. Key variables:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `OPENAI_API_KEY` | `""` | Required if using OpenAI models |
+| `ANTHROPIC_API_KEY` | `""` | For Anthropic/Claude models |
+| `GEMINI_API_KEY` | `""` | For Google Gemini models |
+| `GROQ_API_KEY` | `""` | For Groq-hosted models |
+| `SIMPLE_MODEL` | `gpt-3.5-turbo` | Model used for simple-tier routing |
+| `COMPLEX_MODEL` | `gpt-4o` | Model used for complex-tier routing |
+| `REDIS_URL` | `redis://localhost:6379` | Redis connection string |
+| `SIMILARITY_THRESHOLD` | `0.92` | Cosine similarity required for a cache hit |
+| `CACHE_TTL_SECONDS` | `86400` | Cache entry lifetime (seconds) |
+| `COMPRESS_THRESHOLD` | `2000` | Token count that triggers compression |
+| `COMPRESS_MIN_TURNS` | `6` | Minimum conversation turns before compression |
+| `COMPRESS_KEEP_RECENT` | `4` | Recent turns kept verbatim during compression |
+| `ADAPTIVE_THRESHOLD_ENABLED` | `true` | Auto-adjust similarity threshold from telemetry |
+| `TEST_MODE` | `false` | Forces simple model for all requests |
+| `ENABLE_OTEL` | `false` | Enable OpenTelemetry tracing (OTLP gRPC) |
+| `OTEL_ENDPOINT` | `http://localhost:4317` | OTLP collector endpoint |
+
+Full reference: [docs/CONFIGURATION.md](docs/CONFIGURATION.md)
+
+---
+
+## API
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `POST` | `/v1/chat/completions` | OpenAI-compatible chat completions |
+| `GET` | `/health` | Health check |
+| `GET` | `/v1/telemetry` | Paginated telemetry records |
+| `GET` | `/v1/telemetry/summary` | Aggregated stats |
+| `GET` | `/v1/threshold` | Current adaptive threshold info |
+| `POST` | `/v1/threshold/evaluate` | Trigger threshold re-evaluation |
+| `GET` | `/v1/cache/stats` | FAISS vector count + Redis key count |
+| `DELETE` | `/v1/cache` | Flush entire cache |
+| `DELETE` | `/v1/cache/{key}` | Invalidate a specific cache entry |
+| `GET` | `/admin/usage` | Aggregated spend/token summary (filterable) |
+| `GET` | `/admin/logs` | Paginated raw request log |
+| `GET` | `/admin/savings` | Estimated savings from cache + routing |
+
+**Request headers recognized by `/v1/chat/completions`:**
+
+| Header | Description |
+|--------|-------------|
+| `X-ContextForge-Model-Override` | Force a specific model, bypassing routing |
+| `X-ContextForge-No-Compress: true` | Skip context compression for this request |
+
+Full schema reference: [docs/API.md](docs/API.md)
+
+---
+
+## Dashboard
+
+Open `docs/dashboard/index.html` in your browser while the backend is running. It connects to `localhost:8000` and shows live telemetry: request counts, cache hit rate, model distribution, latency trends, and the full request log. Falls back to mock data when the backend is not running.
 
 ---
 
 ## Testing
 
+All tests use mocked dependencies -- no live API calls or running Redis/server required.
+
 ```bash
-# Run lint check
+# Lint
 ruff check app/ tests/ benchmarks/
 
 # Run all tests
 PYTHONPATH=. pytest tests/ -v
 ```
 
-| Test File | Tests | Coverage |
-|-----------|:-----:|----------|
-| `test_proxy.py` | 12 | Health check, completions, streaming SSE, error propagation (429/500/502) |
-| `test_cache.py` | 14 | VectorStore CRUD, SemanticCache hit/miss, Redis TTL, FAISS-Redis sync |
-| `test_router.py` | 18 | Classifier unit tests, ≥85% accuracy on 1000-prompt dataset, override header |
-| `test_compressor.py` | 5 | Token counting, min turns check, compression, error fallback, system messages |
-| `test_telemetry.py` | 5 | Write/read roundtrip, summary, cost estimation, dedup, total requests |
-| `test_adaptive.py` | 8 | Threshold raise/lower/unchanged, min/max caps, DB write, endpoints |
-| `test_cache_invalidation.py` | 7 | Flush, invalidate, stats, idempotent flush, endpoint schemas |
-| `test_benchmarks.py` | 15 | Paraphrase, latency stats (p50/p95/p99), routing accuracy, confusion matrix |
-| `test_tool_use.py` | — | Tool-use passthrough, schema translation, multi-provider tool calls |
-| `test_failover.py` | — | LiteLLM failover routing, provider retry behavior |
-| `test_phase3.py` | — | Phase 3 end-to-end router integration |
+| Test file | What it covers |
+|-----------|----------------|
+| `test_proxy.py` | Health, completions, streaming, error propagation |
+| `test_cache.py` | VectorStore CRUD, SemanticCache hit/miss, Redis TTL |
+| `test_router.py` | Classifier unit tests, accuracy on labeled prompt set |
+| `test_compressor.py` | Token counting, compression trigger, fallback on error |
+| `test_telemetry.py` | Write/read roundtrip, summary, cost estimation |
+| `test_adaptive.py` | Threshold raise/lower, min/max caps, endpoints |
+| `test_cache_invalidation.py` | Flush, invalidate, stats endpoints |
+| `test_benchmarks.py` | Paraphrase detection, latency stats, routing accuracy |
+| `test_tool_use.py` | Tool-call passthrough, schema translation, multi-provider |
+| `test_failover.py` | LiteLLM failover routing, provider retry behavior |
+| `test_phase3.py` | End-to-end router integration |
 
-> **149/149 tests pass** without any live API calls or running services.
+### Benchmarks
 
----
-
-## Benchmarks
-
-ContextForge includes an E2E benchmarking suite that measures cache hit rates, routing accuracy, and latency percentiles.
+The `benchmarks/` directory contains an E2E benchmark runner that measures routing accuracy and cache hit rates against a 1,000-prompt labeled dataset. Requires a running server:
 
 ```bash
-# Full benchmark (requires running server + Redis)
-python benchmarks/run_benchmark.py
-
-# Dry-run mode (no server required, safe for CI)
-python benchmarks/run_benchmark.py --dry-run
+python benchmarks/run_benchmark.py          # full run (server + Redis required)
+python benchmarks/run_benchmark.py --dry-run  # safe for CI, no server needed
 ```
 
-| Metric | Threshold | Description |
-|--------|-----------|-------------|
-| Routing accuracy | ≥ 85% | Prompts correctly classified as simple/complex |
-| p95 latency | ≤ 5,000ms | 95th percentile response time |
-| Cache hit rate | ≥ 40% | Paraphrased replays served from cache |
-
-See [benchmarks/README.md](benchmarks/README.md) for full details on running benchmarks, interpreting results, and output format.
-
 ---
 
-## Roadmap
+## Important Implementation Notes
 
-| Phase | Feature | Status |
-|:-----:|---------|:------:|
-| 0 | Architecture & Repo Setup | ✅ Complete |
-| 1 | Core Proxy + Tool Passthrough | ✅ Complete |
-| 2 | Semantic Cache (FAISS + Redis) | ✅ Complete |
-| 3 | Observability, Cost Tracking & OTel | ✅ Complete |
-| 4 | Intelligent Context Compression | ✅ Complete |
-| 5 | Universal Tool-Use & Final Handoff | ✅ Complete |
+### Database schema
 
-> **v1.0.0** · 149 tests passing · ruff clean · modular dashboard · admin API · production deployment
+Two SQLite tables are created in `./data/telemetry.db` at startup:
 
----
+- **`telemetry`** — written by `TelemetryMiddleware` after every request. Columns: `model_requested`, `model_used`, `cache_hit`, `similarity_score`, `prompt_tokens`, `completion_tokens`, `estimated_cost_usd`, `latency_ms`, `compressed`, `compression_ratio`.
+- **`request_log`** — written by the LiteLLM success callback in `proxy.py`. Only populated on non-cached upstream calls. Contains accurate cost from `litellm.completion_cost()`. Used by `/admin/usage` and `/admin/savings`.
 
-## Documentation
+Cache hits never appear in `request_log` (they never reach LiteLLM), but they do appear in `telemetry`.
 
-| Document | Description |
-|----------|-------------|
-| [Setup Guide](docs/SETUP.md) | Local development setup — prerequisites, install, run |
-| [Architecture](docs/ARCHITECTURE.md) | System design, request pipeline, component diagram |
-| [API Reference](docs/API.md) | Full endpoint documentation with request/response schemas |
-| [Deployment](docs/DEPLOYMENT.md) | Deployment guide (Railway, Docker, VPS) |
-| [Dashboard](docs/DASHBOARD.md) | Dashboard architecture, pages, element IDs, dev guide |
-| [Configuration](docs/CONFIGURATION.md) | Complete environment variable reference |
-| [Troubleshooting](docs/TROUBLESHOOTING.md) | Common issues and fixes |
-| [Handoff Guide](docs/HANDOFF.md) | Developer onboarding — gotchas, file map |
-| [Decisions](DECISIONS.md) | Architecture Decision Records (ADR-001 to ADR-004) |
-| [Changelog](CHANGELOG.md) | Version history (v0.0.1 → v1.0.0) |
-| [Contributing](CONTRIBUTING.md) | Development setup, branch strategy, PR process |
+### FAISS index persistence
+
+The FAISS index is saved to `./data/faiss.index` on shutdown (`SemanticCache.close()` -> `VectorStore.persist()`). It is reloaded from disk on startup if the file exists. In Docker, this path is mapped to a named volume so it survives container restarts.
+
+### Streaming
+
+Streaming requests (`"stream": true`) bypass both context compression and the semantic cache. They are forwarded directly through the LiteLLM Router and returned as SSE.
+
+### Tool calling
+
+The `forward_with_tools()` method in `proxy.py` checks whether the resolved provider supports tool/function calling before making the upstream call. Providers without tool support (`ollama`, `huggingface`, `replicate`) return a 400 with a descriptive error. LiteLLM handles OpenAI-to-provider-native format translation automatically for supported providers.
+
+### Routing rules
+
+`config/routing_rules.yaml` defines token thresholds and keyword lists for the simple/complex classifier. Runtime overrides via `SIMPLE_MODEL` / `COMPLEX_MODEL` env vars take precedence over the YAML model map. Send `X-ContextForge-Model-Override` header to bypass routing entirely for a single request.
 
 ---
 
 ## Contributors
 
-Built by a 4-person team as a production-grade capstone system.
+Built as a student capstone project by:
 
-<table>
-  <tr>
-    <td align="center">
-      <a href="https://github.com/Ayush-o1">
-        <img src="https://github.com/Ayush-o1.png" width="80px;" alt="Ayush Kumar"/>
-        <br />
-        <sub><b>Ayush Kumar</b></sub>
-      </a>
-      <br />
-      <sub>Lead Architect</sub>
-    </td>
-    <td align="center">
-      <a href="https://github.com/Astik01">
-        <img src="https://github.com/Astik01.png" width="80px;" alt="Astik"/>
-        <br />
-        <sub><b>Astik</b></sub>
-      </a>
-      <br />
-      <sub>Core Engineering</sub>
-    </td>
-    <td align="center">
-      <a href="https://github.com/Anubhav104401">
-        <img src="https://github.com/Anubhav104401.png" width="80px;" alt="Anubhav"/>
-        <br />
-        <sub><b>Anubhav</b></sub>
-      </a>
-      <br />
-      <sub>Systems & Logic</sub>
-    </td>
-    <td align="center">
-      <a href="https://github.com/aryanbhat2109-ctrl">
-        <img src="https://github.com/aryanbhat2109-ctrl.png" width="80px;" alt="Aryan"/>
-        <br />
-        <sub><b>Aryan</b></sub>
-      </a>
-      <br />
-      <sub>Multi-Provider Integration</sub>
-    </td>
-  </tr>
-</table>
-
----
-
-## Contributing
-
-We welcome contributions of all kinds — code, documentation, bug reports, and feature ideas.
-
-Please read [CONTRIBUTING.md](CONTRIBUTING.md) before getting started. It covers:
-- Development setup
-- Code style and linting
-- Testing guidelines
-- Branch naming and PR process
+- [Ayush Kumar](https://github.com/Ayush-o1)
+- [Astik](https://github.com/Astik01)
+- [Anubhav](https://github.com/Anubhav104401)
+- [Aryan Bhat](https://github.com/aryanbhat2109-ctrl)
 
 ---
 
 ## License
 
-This project is licensed under the MIT License. See [LICENSE](LICENSE) for details.
-
----
-
-## Contact
-
-- **Maintainer:** [Ayush Kumar](https://github.com/Ayush-o1)
-- **Email:** ayushh.ofc10@gmail.com
-- **Issues:** [GitHub Issues](https://github.com/Ayush-o1/contextforge/issues)
-
----
-
-<p align="center">
-  <sub>Built for developers who are tired of overpaying for LLM APIs — now with 100+ provider support via LiteLLM.</sub>
-</p>
+MIT -- see [LICENSE](LICENSE).
