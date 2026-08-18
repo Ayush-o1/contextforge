@@ -1,5 +1,4 @@
 # ContextForge Architecture
-> Last updated: v1.0.0 — Full Multi-Provider Release (Phases 0–10 complete)
 
 ---
 
@@ -13,32 +12,6 @@ ContextForge is an OpenAI-compatible LLM proxy middleware that sits between LLM-
 
 ---
 
-## Build Status
-
-| Component | Status | Phase |
-|-----------|:------:|:-----:|
-| FastAPI Gateway | ✅ | 1 |
-| OpenAI Proxy (passthrough + streaming) | ✅ | 1 |
-| Pydantic Request/Response Models | ✅ | 1 |
-| Error Propagation (4xx/5xx) | ✅ | 1 |
-| Embedding Service (all-MiniLM-L6-v2) | ✅ | 2 |
-| FAISS Vector Index | ✅ | 2 |
-| Semantic Cache (FAISS + Redis) | ✅ | 2 |
-| Rule-Based Complexity Classifier | ✅ | 3 |
-| Model Tier Routing | ✅ | 3 |
-| Context Compressor | ✅ | 4 |
-| Telemetry (SQLite, WAL mode) | ✅ | 5 |
-| Cost Estimation | ✅ | 5 |
-| Adaptive Similarity Thresholds | ✅ | 6 |
-| Cache Invalidation API | ✅ | 6 |
-| 1000-Prompt Benchmark Suite | ✅ | 7 |
-| E2E Benchmark Runner | ✅ | 7 |
-| Docker Compose | ✅ | 8 |
-| Modular Dashboard | ✅ | 8 |
-| Production Documentation | ✅ | 9 |
-
----
-
 ## Request Pipeline
 
 This is the actual request flow as of v1.0.0:
@@ -49,9 +22,9 @@ User App (any OpenAI-compatible SDK)
   ▼
 ContextForge Gateway  ←  POST /v1/chat/completions
   │
-  ├── Context Compressor  (summarize long conversation histories)
-  ├── Semantic Cache       (FAISS + Redis — return cached hit in <30ms)
   ├── Model Router         (classify complexity → simple/complex tier)
+  ├── Context Compressor  (summarize long conversation histories)
+  ├── Semantic Cache       (FAISS + Redis — embed → search → Redis fetch)
   │
   ▼
 LiteLLM Gateway  ←  unified multi-provider call with failover & retries
@@ -265,10 +238,9 @@ CREATE TABLE telemetry (
 ```sql
 CREATE TABLE threshold_history (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
-    timestamp       TEXT,
-    threshold       REAL,
-    cache_hit_rate  REAL,
-    action          TEXT  -- 'raised', 'lowered', or 'unchanged'
+    threshold       REAL NOT NULL,
+    cache_hit_rate  REAL NOT NULL,
+    evaluated_at    TEXT NOT NULL
 );
 ```
 
@@ -285,12 +257,12 @@ CREATE TABLE threshold_history (
 
 All ADRs are documented in [DECISIONS.md](../DECISIONS.md).
 
-| ADR | Decision | Status |
-|-----|----------|--------|
-| ADR-001 | FAISS over Qdrant for MVP | ✅ Implemented (Phase 2) |
-| ADR-002 | Rule-based classifier first | ✅ Implemented (Phase 3) |
-| ADR-003 | SQLite for telemetry | ✅ Implemented (Phase 5) |
-| ADR-004 | all-MiniLM-L6-v2 embeddings | ✅ Implemented (Phase 2) |
+| ADR | Decision |
+|-----|----------|
+| ADR-001 | FAISS over Qdrant for the vector index |
+| ADR-002 | Rule-based classifier for routing |
+| ADR-003 | SQLite for telemetry |
+| ADR-004 | all-MiniLM-L6-v2 as the embedding model |
 
 Each ADR includes context, decision rationale, and a documented upgrade path.
 
