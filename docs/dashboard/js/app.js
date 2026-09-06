@@ -299,10 +299,11 @@ async function loadData() {
   if (connected) {
     try {
       const base = getApiBaseUrl();
+      const headers = getApiHeaders();
       const [summaryRes, requestsRes, cacheRes] = await Promise.all([
-        fetch(`${base}/v1/telemetry/summary`),
-        fetch(`${base}/v1/telemetry?limit=50`),
-        fetch(`${base}/v1/cache/stats`),
+        fetch(`${base}/v1/telemetry/summary`, { headers }),
+        fetch(`${base}/v1/telemetry?limit=50`, { headers }),
+        fetch(`${base}/v1/cache/stats`, { headers }),
       ]);
       const summary = await summaryRes.json();
       const requests = await requestsRes.json();
@@ -410,6 +411,20 @@ function getApiBaseUrl() {
     return window.location.origin;
   }
   return 'http://localhost:8000';
+}
+
+// ─── API AUTH HEADERS ─────────────────────────────────────────
+// Only needed if the backend has CONTEXTFORGE_API_KEYS set (auth is off by
+// default). Set a token once via the browser console:
+//   localStorage.setItem('contextforge_api_key', 'your-token')
+function getApiHeaders() {
+  let token = null;
+  try {
+    token = localStorage.getItem('contextforge_api_key');
+  } catch {
+    token = null;
+  }
+  return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
 // ─── EVENT DELEGATION ────────────────────────────────────────

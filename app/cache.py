@@ -87,8 +87,15 @@ class SemanticCache:
             logger.debug("cache.miss", reason="below_threshold", similarity=similarity)
             return CacheResult(hit=False, similarity_score=similarity)
 
-        # Fetch from Redis
-        cached_data = await self._redis.get(f"cache:{cache_key}")
+        # Fetch from Redis. Redis is an optimization, not a hard dependency —
+        # if it's unreachable we degrade to a cache miss instead of failing
+        # the whole request (the upstream call still succeeds).
+        try:
+            cached_data = await self._redis.get(f"cache:{cache_key}")
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("cache.lookup.redis_error", cache_key=cache_key, reason=str(exc))
+            return CacheResult(hit=False, similarity_score=similarity)
+
         if cached_data is None:
             # Vector exists in FAISS but Redis entry expired (TTL)
             logger.debug("cache.miss", reason="redis_expired", cache_key=cache_key)
@@ -116,12 +123,18 @@ class SemanticCache:
         text = self._embedder.messages_to_text(messages)
         vector = self._embedder.embed(text)
 
-        # Store in Redis with TTL
-        await self._redis.set(
-            f"cache:{cache_key}",
-            json.dumps(response),
-            ex=self._settings.cache_ttl_seconds,
-        )
+        # Store in Redis with TTL. Best-effort: if Redis is unreachable, still
+        # index the vector — a later lookup will find it in FAISS, miss on the
+        # Redis fetch, and correctly fall back to "redis_expired" (cache miss)
+        # rather than losing the request's cost/latency savings entirely.
+        try:
+            await self._redis.set(
+                f"cache:{cache_key}",
+                json.dumps(response),
+                ex=self._settings.cache_ttl_seconds,
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("cache.store.redis_error", cache_key=cache_key, reason=str(exc))
 
         # Add to FAISS index
         self._vector_store.add(vector, cache_key)

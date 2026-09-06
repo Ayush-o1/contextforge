@@ -218,6 +218,41 @@ class TestSemanticCache:
         call_kwargs = mock_redis_client.set.call_args
         assert call_kwargs[1]["ex"] == 86400  # TTL from settings
 
+    # ── Redis outage resilience ────────────────────────────────────────
+    # Redis is an optimization, not a hard dependency: if it's down, chat
+    # completions must still succeed (as a cache miss / best-effort store)
+    # rather than raising and turning into a 500 for every request.
+
+    @pytest.mark.asyncio
+    async def test_lookup_degrades_to_miss_on_redis_error(
+        self, cache, vector_store, mock_redis_client, mock_embedder_for_cache
+    ):
+        """A Redis error during the fetch must not raise — it's a cache miss."""
+        messages = [{"role": "user", "content": "Hello"}]
+        v1 = np.ones(384, dtype=np.float32)
+        v1 /= np.linalg.norm(v1)
+        vector_store.add(v1, "key1")
+        mock_embedder_for_cache.embed.return_value = v1
+        mock_redis_client.get.side_effect = ConnectionError("Redis unreachable")
+
+        result = await cache.lookup("gpt-3.5-turbo", messages)
+
+        assert result.hit is False
+        assert result.similarity_score > 0.99  # FAISS still worked
+
+    @pytest.mark.asyncio
+    async def test_store_still_indexes_vector_on_redis_error(
+        self, cache, vector_store, mock_redis_client, chat_completion_fixture
+    ):
+        """A Redis error during store must not raise — FAISS indexing still happens."""
+        messages = [{"role": "user", "content": "Hello"}]
+        mock_redis_client.set.side_effect = ConnectionError("Redis unreachable")
+
+        # Must not raise
+        await cache.store("gpt-3.5-turbo", messages, chat_completion_fixture)
+
+        assert vector_store.size == 1
+
 
 # ─────────────── Integration: Cache in Chat Endpoint ─────────────────────
 

@@ -6,6 +6,7 @@ All tests use recorded fixtures — no live API calls.
 from __future__ import annotations
 
 import json
+from unittest.mock import AsyncMock
 
 from app.proxy import UpstreamError
 
@@ -21,6 +22,38 @@ class TestHealthCheck:
         data = resp.json()
         assert data["status"] == "ok"
         assert data["version"] == "1.0.0"
+
+    def test_health_reports_redis_unknown_when_not_wired(self, test_client):
+        """test_client's fixture doesn't set app.state.redis at all."""
+        resp = test_client.get("/health")
+        assert resp.json()["redis"] == "unknown"
+
+    def test_health_status_ok_even_when_redis_unreachable(self, test_client):
+        """Redis is optional — its outage must not fail the liveness probe."""
+        from app.main import app
+
+        broken_redis = AsyncMock()
+        broken_redis.ping = AsyncMock(side_effect=ConnectionError("down"))
+        app.state.redis = broken_redis
+        try:
+            resp = test_client.get("/health")
+            assert resp.status_code == 200
+            assert resp.json()["status"] == "ok"
+            assert resp.json()["redis"] == "unreachable"
+        finally:
+            del app.state.redis
+
+    def test_health_reports_redis_ok_when_reachable(self, test_client):
+        from app.main import app
+
+        healthy_redis = AsyncMock()
+        healthy_redis.ping = AsyncMock(return_value=True)
+        app.state.redis = healthy_redis
+        try:
+            resp = test_client.get("/health")
+            assert resp.json()["redis"] == "ok"
+        finally:
+            del app.state.redis
 
 
 # ──────────────────── Non-Streaming Completions ──────────────────────────

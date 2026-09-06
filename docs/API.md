@@ -12,6 +12,18 @@ http://localhost:8000
 
 ---
 
+## Authentication
+
+Disabled by default. If `CONTEXTFORGE_API_KEYS` is set (see [CONFIGURATION.md](CONFIGURATION.md)), every endpoint below except `GET /health` requires:
+
+```
+Authorization: Bearer <token>
+```
+
+using one of the configured tokens. A missing or invalid token returns `401` with a `WWW-Authenticate: Bearer` header. This is separate from the upstream provider keys (`OPENAI_API_KEY`, etc.) — it authenticates the caller to ContextForge, not ContextForge to the LLM provider.
+
+---
+
 ## Endpoints
 
 | Method | Endpoint | Description |
@@ -109,16 +121,21 @@ All caching, routing, compression, and telemetry features work transparently reg
 
 ## `GET /health`
 
-Health check endpoint. Returns the server status and version.
+Health check endpoint. Never requires authentication, even when `CONTEXTFORGE_API_KEYS` is set — it's the readiness/liveness probe.
+
+`status` reflects whether the process is up and serving requests; it stays `"ok"` even if Redis is down, since the semantic cache degrades to a pass-through cache miss rather than failing requests (see [ARCHITECTURE.md](ARCHITECTURE.md)). `redis` reports that dependency's reachability separately.
 
 ### Response
 
 ```json
 {
   "status": "ok",
-  "version": "1.0.0"
+  "version": "1.0.0",
+  "redis": "ok"
 }
 ```
+
+`redis` is one of `"ok"`, `"unreachable"`, or `"unknown"` (not yet initialized).
 
 ---
 

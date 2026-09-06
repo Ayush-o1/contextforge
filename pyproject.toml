@@ -15,3 +15,10 @@ select = ["E", "F", "I", "W"]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 testpaths = ["tests"]
+markers = [
+    "e2e: live-provider end-to-end tests — real API calls + Redis, excluded by default (run with -m e2e)",
+]
+# Excluded by default: e2e tests hit real providers/Redis and, because they run
+# the real app lifespan (real ProxyClient/Embedder) against the shared FastAPI
+# app singleton, they must never share a process with the mocked test suite.
+addopts = "-m 'not e2e'"

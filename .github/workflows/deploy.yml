@@ -21,7 +21,7 @@ jobs:
       - name: Run linter
         run: ruff check app/ tests/ benchmarks/
       - name: Run tests
-        run: PYTHONPATH=. pytest tests/ -v --tb=short -k "not test_e2e"
+        run: PYTHONPATH=. pytest tests/ -v --tb=short -m "not e2e"
 
   deploy:
     name: Deploy to Railway

@@ -220,12 +220,16 @@ Copy `.env.example` to `.env` and fill in your keys. Key variables:
 | `TEST_MODE` | `false` | Forces simple model for all requests |
 | `ENABLE_OTEL` | `false` | Enable OpenTelemetry tracing (OTLP gRPC) |
 | `OTEL_ENDPOINT` | `http://localhost:4317` | OTLP collector endpoint |
+| `CONTEXTFORGE_API_KEYS` | `""` | Comma-separated bearer tokens for gateway auth. Empty = auth disabled (local dev default) |
+| `CORS_ALLOW_ORIGINS` | `*` | Comma-separated allowed origins (credentialed CORS is never enabled) |
 
 Full reference: [docs/CONFIGURATION.md](docs/CONFIGURATION.md)
 
 ---
 
 ## API
+
+Disabled by default; set `CONTEXTFORGE_API_KEYS` to require `Authorization: Bearer <token>` on every endpoint except `GET /health`. See [docs/API.md](docs/API.md#authentication).
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
@@ -261,20 +265,20 @@ Open `docs/dashboard/index.html` in your browser while the backend is running. I
 
 ## Testing
 
-All tests use mocked dependencies -- no live API calls or running Redis/server required.
+`pytest tests/` uses only mocked dependencies — no live API calls or running Redis/server required, and excludes the live-provider E2E suite by default (see below).
 
 ```bash
 # Lint
 ruff check app/ tests/ benchmarks/
 
-# Run all tests
+# Run all tests (168 tests, mocked — this is what CI runs)
 PYTHONPATH=. pytest tests/ -v
 ```
 
 | Test file | What it covers |
 |-----------|----------------|
-| `test_proxy.py` | Health, completions, streaming, error propagation |
-| `test_cache.py` | VectorStore CRUD, SemanticCache hit/miss, Redis TTL |
+| `test_proxy.py` | Health (incl. Redis dependency reporting), completions, streaming, error propagation |
+| `test_cache.py` | VectorStore CRUD, SemanticCache hit/miss, Redis TTL, graceful degradation on Redis errors |
 | `test_router.py` | Classifier unit tests, accuracy on labeled prompt set |
 | `test_compressor.py` | Token counting, compression trigger, fallback on error |
 | `test_telemetry.py` | Write/read roundtrip, summary, cost estimation |
@@ -284,6 +288,17 @@ PYTHONPATH=. pytest tests/ -v
 | `test_tool_use.py` | Tool-call passthrough, schema translation, multi-provider |
 | `test_failover.py` | LiteLLM failover routing, provider retry behavior |
 | `test_phase3.py` | End-to-end router integration |
+| `test_auth.py` | Gateway bearer-token auth: enabled/disabled, valid/invalid/missing tokens, `/health` always open |
+
+### Live E2E tests (`test_e2e.py`)
+
+Marked `@pytest.mark.e2e` and excluded by default (`addopts = "-m 'not e2e'"` in `pyproject.toml`) — these hit a real provider and real Redis, and cost real money. Run them intentionally:
+
+```bash
+RUN_E2E_TESTS=1 OPENAI_API_KEY=sk-your-real-key PYTHONPATH=. pytest tests/test_e2e.py -m e2e -v
+```
+
+> **macOS (Apple Silicon) note:** loading `faiss-cpu` and `torch` in the same process can abort with `Fatal Python error: Aborted` — a known OpenMP runtime conflict between the two libraries, specific to macOS. See [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md#fatal-python-error-aborted-when-running-tests-on-macos-apple-silicon) for the one-line fix.
 
 ### Benchmarks
 

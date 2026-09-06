@@ -104,3 +104,48 @@ If higher embedding quality is needed for domain-specific prompts:
 1. Evaluate larger models (e.g., all-mpnet-base-v2 at 768-dim)
 2. Fine-tune on domain-specific prompt pairs
 3. Update `FAISS_INDEX_PATH` dimension parameter and re-index
+
+---
+
+## ADR-005: Opt-In Bearer-Token Auth Over a Mandatory Auth Layer
+
+**Status:** Accepted
+**Date:** 2026-09-06
+
+### Context
+ContextForge originally shipped with no authentication at all — reasonable for a single developer running it on localhost, but a real gap the moment it's exposed to a team or a shared environment. Two options were evaluated:
+- **Mandatory auth:** require credentials unconditionally, breaking the zero-friction local setup documented in the README
+- **Opt-in bearer-token auth:** off by default, enabled by setting `CONTEXTFORGE_API_KEYS`
+
+### Decision
+Add **opt-in bearer-token authentication** (`app/auth.py`), applied as a FastAPI dependency to every endpoint except `GET /health`. Disabled when `CONTEXTFORGE_API_KEYS` is unset.
+
+### Rationale
+- **Preserves the local-dev experience:** `docker compose up` still works with zero config, matching the existing "Local Setup" instructions
+- **Real enforcement when enabled:** constant-time comparison (`hmac.compare_digest`) against a list of tokens, not a single shared secret — supports per-client tokens without a user database
+- **`/health` stays open:** load balancers and container orchestrators must be able to probe liveness without credentials
+- **Not a replacement for a real identity system:** this is bearer-token gateway auth, not OAuth/JWT/RBAC — sufficient for a small number of trusted clients (its actual use case), not a multi-tenant SaaS
+
+### Upgrade Path
+If ContextForge needs to support many distinct callers with different quotas or permissions, replace the flat token list with per-key records (rate limits, allowed models, usage attribution) backed by the existing SQLite database.
+
+---
+
+## ADR-006: E2E Tests Isolated by pytest Marker, Not Skip-on-Missing-Key
+
+**Status:** Accepted
+**Date:** 2026-09-06
+
+### Context
+`tests/test_e2e.py` runs the real FastAPI app lifespan (real `ProxyClient`, real `Embedder`, real FAISS/Redis) against live providers, and was originally skipped only via `pytestmark = pytest.mark.skipif(not os.environ.get("OPENAI_API_KEY"), ...)`. CI's `ci.yml` sets a dummy `OPENAI_API_KEY` for the *mocked* test suite (it doesn't need a real key, just a non-empty string so `Settings` validation passes), which meant the skip condition was always false in CI — the live-API tests ran for real, failed authentication against OpenAI, and — because they mutate the shared FastAPI `app` singleton's `app.state` via the real lifespan and never unset it — left `app.state.proxy_client` pointing at a real (unmockable) `ProxyClient` for whichever test module ran next in the same process. Result: 24 of 171 tests failed on every CI run for months (`test_e2e.py` itself, plus collateral failures in `test_proxy.py`/`test_router.py`), while `deploy.yml` had independently worked around the same root cause with a `-k "not test_e2e"` filter — the two workflows had silently diverged.
+
+### Decision
+1. Mark `test_e2e.py` with `@pytest.mark.e2e` and register it in `pyproject.toml`.
+2. Default to excluding it everywhere via `addopts = "-m 'not e2e'"`, so both `ci.yml` and `deploy.yml` (and any local `pytest tests/`) get the same behavior from one source of truth instead of two workflow-specific flags that can drift.
+3. Decouple the live-test skip condition from `OPENAI_API_KEY` presence alone — require an explicit `RUN_E2E_TESTS=1` opt-in *and* a real key, so a CI convenience placeholder can never accidentally enable live calls again.
+4. Add a `finally` block to the e2e module's fixture that deletes the `app.state` attributes the real lifespan set, so even an intentional `-m e2e` run can't leak real objects into a later test module.
+
+### Rationale
+- **One source of truth:** marker + `addopts` in `pyproject.toml` can't drift between workflow files the way two hand-written `-k`/`-m` flags did
+- **Fails safe, not silent:** a future CI env var change can no longer accidentally re-enable live calls, because the marker default doesn't depend on any specific env var
+- **Defense in depth:** the state-cleanup `finally` block means the isolation doesn't depend solely on remembering the marker filter every time

@@ -7,7 +7,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 import structlog
-from fastapi import FastAPI, Request
+from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -16,6 +16,7 @@ from redis.asyncio import Redis
 from app import telemetry as tel
 from app.adaptive import ThresholdManager, get_active_threshold
 from app.api.admin import router as admin_router
+from app.auth import require_api_key
 from app.cache import SemanticCache
 from app.compressor import compress_context
 from app.config import Settings, get_settings
@@ -125,10 +126,14 @@ app = FastAPI(
 # TelemetryMiddleware MUST be registered to write per-request telemetry.
 app.add_middleware(TelemetryMiddleware)
 
+_settings_for_cors = get_settings()
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
+    allow_origins=_settings_for_cors.cors_origins,
+    # Never combine wildcard/browser-open origins with credentialed
+    # (cookie) CORS — this gateway authenticates via bearer token
+    # (see app/auth.py), which doesn't need allow_credentials at all.
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -139,22 +144,37 @@ if _dashboard_dir.exists():
     app.mount("/dashboard", StaticFiles(directory=str(_dashboard_dir), html=True), name="dashboard")
 
 # ─── Admin router (cost reporting, request log) ──────────────────────────
-app.include_router(admin_router)
+app.include_router(admin_router, dependencies=[Depends(require_api_key)])
 
 
 # ───────────────────────── Health Check ──────────────────────────────────
 
 
 @app.get("/health", response_model=HealthResponse)
-async def health_check() -> HealthResponse:
-    """Simple health check endpoint."""
-    return HealthResponse()
+async def health_check(request: Request) -> HealthResponse:
+    """Health check endpoint.
+
+    Always returns 200 with status="ok" as long as the process is serving
+    requests — Redis is an optional dependency (the semantic cache degrades
+    to pass-through on failure, see app/cache.py), so its outage alone
+    shouldn't fail readiness/liveness probes. The ``redis`` field reports
+    that dependency's reachability separately for diagnostics.
+    """
+    redis_status = "unknown"
+    redis_client = getattr(request.app.state, "redis", None)
+    if redis_client is not None:
+        try:
+            await redis_client.ping()
+            redis_status = "ok"
+        except Exception:  # noqa: BLE001
+            redis_status = "unreachable"
+    return HealthResponse(redis=redis_status)
 
 
 # ─────────────────── Chat Completions Endpoint ───────────────────────────
 
 
-@app.post("/v1/chat/completions", response_model=None)
+@app.post("/v1/chat/completions", response_model=None, dependencies=[Depends(require_api_key)])
 async def chat_completions(request: Request, body: ChatCompletionRequest):
     """OpenAI-compatible chat completions endpoint.
 
@@ -171,6 +191,12 @@ async def chat_completions(request: Request, body: ChatCompletionRequest):
     router: ModelRouter = request.app.state.router
     settings: Settings = request.app.state.settings
     threshold_manager: ThresholdManager | None = getattr(request.app.state, "threshold_manager", None)
+
+    # Set before the try block so TelemetryMiddleware still records which
+    # model was requested even if routing/compression/cache/upstream fails
+    # below — otherwise failed requests were logged with model_requested=None,
+    # which made cost/error telemetry for a specific model unreliable.
+    request.state.model_requested = body.model
 
     try:
         messages_dicts = [m.model_dump(exclude_none=True) for m in body.messages]
@@ -282,12 +308,12 @@ async def chat_completions(request: Request, body: ChatCompletionRequest):
 # ─────────────────── Telemetry Endpoints ─────────────────────────────────
 
 
-@app.get("/v1/telemetry")
+@app.get("/v1/telemetry", dependencies=[Depends(require_api_key)])
 async def get_telemetry(limit: int = 50, offset: int = 0):
     return {"records": tel.get_records(limit, offset), "limit": limit, "offset": offset}
 
 
-@app.get("/v1/telemetry/summary")
+@app.get("/v1/telemetry/summary", dependencies=[Depends(require_api_key)])
 async def get_telemetry_summary():
     return tel.get_summary()
 
@@ -295,7 +321,7 @@ async def get_telemetry_summary():
 # ────────────────── Adaptive Threshold Endpoints ─────────────────────────
 
 
-@app.get("/v1/threshold")
+@app.get("/v1/threshold", dependencies=[Depends(require_api_key)])
 async def get_threshold(request: Request):
     """Return the current adaptive threshold info."""
     settings: Settings = request.app.state.settings
@@ -303,7 +329,7 @@ async def get_threshold(request: Request):
     return manager.get_info(settings)
 
 
-@app.post("/v1/threshold/evaluate")
+@app.post("/v1/threshold/evaluate", dependencies=[Depends(require_api_key)])
 async def evaluate_threshold(request: Request):
     """Manually trigger an adaptive threshold evaluation."""
     settings: Settings = request.app.state.settings
@@ -315,7 +341,7 @@ async def evaluate_threshold(request: Request):
 # ─────────────────── Cache Invalidation Endpoints ────────────────────────
 
 
-@app.get("/v1/cache/stats")
+@app.get("/v1/cache/stats", dependencies=[Depends(require_api_key)])
 async def cache_stats(request: Request):
     """Return cache statistics."""
     settings: Settings = request.app.state.settings
@@ -326,7 +352,7 @@ async def cache_stats(request: Request):
     return stats
 
 
-@app.delete("/v1/cache")
+@app.delete("/v1/cache", dependencies=[Depends(require_api_key)])
 async def flush_cache(request: Request):
     """Flush the entire semantic cache."""
     cache: SemanticCache = request.app.state.cache
@@ -334,7 +360,7 @@ async def flush_cache(request: Request):
     return {"status": "ok", **result}
 
 
-@app.delete("/v1/cache/{key}")
+@app.delete("/v1/cache/{key}", dependencies=[Depends(require_api_key)])
 async def invalidate_cache_key(key: str, request: Request):
     """Invalidate a specific cache entry by key."""
     cache: SemanticCache = request.app.state.cache

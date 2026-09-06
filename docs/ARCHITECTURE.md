@@ -253,6 +253,19 @@ CREATE TABLE threshold_history (
 
 ---
 
+## Security
+
+| Concern | Approach |
+|---------|----------|
+| Gateway auth | Opt-in bearer-token check (`app/auth.py`) on every endpoint except `/health`, enabled by setting `CONTEXTFORGE_API_KEYS`. Off by default for local dev — see ADR-005. |
+| CORS | Configurable allowed origins (`CORS_ALLOW_ORIGINS`), credentialed (cookie) CORS never enabled regardless of origin config. |
+| Redis outage | `SemanticCache.lookup()`/`.store()` catch Redis errors and degrade to a cache miss rather than failing the request — the cache is an optimization, not a hard dependency. |
+| Secrets | Provider API keys live in `.env` (gitignored) and are mapped into `os.environ` for LiteLLM at startup; never logged or returned in responses. |
+
+See [SECURITY.md](../SECURITY.md) for the full threat model and vulnerability reporting process.
+
+---
+
 ## Architecture Decision Records
 
 All ADRs are documented in [DECISIONS.md](../DECISIONS.md).
@@ -263,6 +276,8 @@ All ADRs are documented in [DECISIONS.md](../DECISIONS.md).
 | ADR-002 | Rule-based classifier for routing |
 | ADR-003 | SQLite for telemetry |
 | ADR-004 | all-MiniLM-L6-v2 as the embedding model |
+| ADR-005 | Opt-in bearer-token auth over a mandatory auth layer |
+| ADR-006 | E2E tests isolated by pytest marker, not skip-on-missing-key |
 
 Each ADR includes context, decision rationale, and a documented upgrade path.
 

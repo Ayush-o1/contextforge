@@ -140,6 +140,30 @@ Logs are structured JSON via [structlog](https://www.structlog.org/).
 
 ---
 
+## Gateway Authentication
+
+Disabled by default — the right default for local, single-user development. See [SECURITY.md](../SECURITY.md) for the full threat model.
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `CONTEXTFORGE_API_KEYS` | Comma-separated bearer tokens required on protected endpoints | `""` (auth disabled) |
+
+When set, every endpoint except `GET /health` requires `Authorization: Bearer <token>` with one of the configured tokens. This is **not** the same as the provider keys above — it authenticates the *caller* to ContextForge, not ContextForge to the upstream LLM provider. Invalid or missing tokens get a `401` with `WWW-Authenticate: Bearer`.
+
+> **Dashboard:** if you enable auth, the static dashboard (`docs/dashboard/`) also needs a token. Set one in the browser console: `localStorage.setItem('contextforge_api_key', 'your-token')`.
+
+---
+
+## CORS
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `CORS_ALLOW_ORIGINS` | Comma-separated allowed origins, or `*` for any | `*` |
+
+Credentialed (cookie-based) CORS is never enabled, regardless of this setting — this gateway is authenticated via bearer token, not cookies, so a wildcard origin carries no CSRF risk.
+
+---
+
 ## OpenTelemetry (Optional)
 
 OpenTelemetry tracing is opt-in. The SDK is always installed; tracing is a no-op when `ENABLE_OTEL=false`.
@@ -210,4 +234,10 @@ TEST_MODE=false
 # ─── OpenTelemetry (opt-in) ─────────────────────────────────────────────────
 ENABLE_OTEL=false
 OTEL_ENDPOINT=http://localhost:4317
+
+# ─── Gateway Authentication (opt-in) ─────────────────────────────────────────
+CONTEXTFORGE_API_KEYS=
+
+# ─── CORS ─────────────────────────────────────────────────────────────────
+CORS_ALLOW_ORIGINS=*
 ```

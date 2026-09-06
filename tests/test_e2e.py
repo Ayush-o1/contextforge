@@ -12,9 +12,28 @@ Requirements:
   - OPENAI_API_KEY set in environment or .env
   - Redis running (or REDIS_URL set)
   - TEST_MODE=true in environment (forces cheapest model)
+  - RUN_E2E_TESTS=1 set explicitly (see below)
+
+This module is marked ``e2e`` and is excluded from the default test run
+(see ``addopts`` in pyproject.toml) — ``pytest tests/`` never collects it.
+This matters for two reasons, not just cost:
+
+1. These tests hit real providers and cost real money.
+2. They run the *real* app lifespan (real ProxyClient, real Embedder, real
+   FAISS/Redis) against the shared FastAPI ``app`` singleton imported from
+   ``app.main``. That mutates ``app.state`` with live objects. Running this
+   module in the same process as the mocked suite has previously caused the
+   mocked tests to silently pick up the real ProxyClient instead of their
+   mocks (see the module-scoped fixture's teardown below, which restores
+   ``app.state`` defensively even for an intentional ``-m e2e`` run).
+
+The skip condition below is intentionally independent of OPENAI_API_KEY: CI
+sets a dummy OPENAI_API_KEY for unrelated (mocked) tests, and if the skip
+depended on that alone, these tests would silently run for real. Requires
+the explicit RUN_E2E_TESTS=1 opt-in *and* a real-looking API key.
 
 Usage:
-  PYTHONPATH=. pytest tests/test_e2e.py -v --tb=short -x
+  RUN_E2E_TESTS=1 PYTHONPATH=. pytest tests/test_e2e.py -v --tb=short -x -m e2e
 """
 
 from __future__ import annotations
@@ -26,11 +45,13 @@ import time
 import pytest
 from fastapi.testclient import TestClient
 
-# Skip entire module if no API key is available
-pytestmark = pytest.mark.skipif(
-    not os.environ.get("OPENAI_API_KEY"),
-    reason="OPENAI_API_KEY not set — skipping live E2E tests",
-)
+pytestmark = [
+    pytest.mark.e2e,
+    pytest.mark.skipif(
+        not (os.environ.get("RUN_E2E_TESTS") and os.environ.get("OPENAI_API_KEY")),
+        reason="Live E2E tests require RUN_E2E_TESTS=1 and a real OPENAI_API_KEY — skipped by default",
+    ),
+]
 
 
 @pytest.fixture(scope="module")
@@ -55,19 +76,35 @@ def e2e_client():
 
     from app.main import app
     # Use lifespan context manager so embedder + FAISS + Redis are initialized
-    with TestClient(app, raise_server_exceptions=False) as client:
-        # Flush cache to start clean
-        client.delete("/v1/cache")
-        yield client
+    try:
+        with TestClient(app, raise_server_exceptions=False) as client:
+            # Flush cache to start clean
+            client.delete("/v1/cache")
+            yield client
+    finally:
+        # Defense in depth: lifespan's startup sets real objects (proxy_client,
+        # embedder, vector_store, redis, cache, router, threshold_manager,
+        # settings) directly onto the shared `app.state`, and its shutdown
+        # only closes them — it never unsets the attributes. Left in place,
+        # a later test module reusing `app` (e.g. via conftest's mocked
+        # `test_client` fixture) could silently observe leftover real
+        # objects instead of its own mocks. Remove everything lifespan set
+        # so any such misuse fails loudly instead of hitting a live API.
+        for attr in (
+            "proxy_client", "embedder", "vector_store", "redis",
+            "cache", "router", "threshold_manager", "settings",
+        ):
+            if hasattr(app.state, attr):
+                delattr(app.state, attr)
 
-    # Cleanup: remove test database and index files
-    get_settings.cache_clear()
-    for f in ["./data/test_e2e_telemetry.db", "./data/test_e2e_faiss.index", "./data/test_e2e_faiss.index.idmap"]:
-        if os.path.exists(f):
-            try:
-                os.remove(f)
-            except OSError:
-                pass
+        # Cleanup: remove test database and index files
+        get_settings.cache_clear()
+        for f in ["./data/test_e2e_telemetry.db", "./data/test_e2e_faiss.index", "./data/test_e2e_faiss.index.idmap"]:
+            if os.path.exists(f):
+                try:
+                    os.remove(f)
+                except OSError:
+                    pass
 
 
 @pytest.fixture(scope="module")

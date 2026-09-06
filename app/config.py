@@ -56,6 +56,34 @@ class Settings(BaseSettings):
     # --- OpenTelemetry ---
     enable_otel: bool = False                            # set True in .env to activate
     otel_endpoint: str = "http://localhost:4317"         # OTLP gRPC collector endpoint
+    # --- Gateway Authentication ---
+    # Comma-separated list of accepted bearer tokens for calls to this gateway
+    # (checked against the `Authorization: Bearer <token>` header, distinct
+    # from the upstream provider keys above). Empty = auth disabled, which is
+    # the right default for local single-user development. Set this before
+    # exposing ContextForge beyond localhost.
+    contextforge_api_keys: str = ""
+    # --- CORS ---
+    # Comma-separated list of allowed origins, or "*" for any origin.
+    # Credentialed CORS (cookies) is never enabled here — this gateway is
+    # authenticated via bearer token, not cookies, so wildcard origins are
+    # safe without allow_credentials.
+    cors_allow_origins: str = "*"
+
+    @property
+    def api_keys(self) -> list[str]:
+        """Parsed, non-empty list of accepted gateway bearer tokens."""
+        return [k.strip() for k in self.contextforge_api_keys.split(",") if k.strip()]
+
+    @property
+    def auth_enabled(self) -> bool:
+        """Whether gateway bearer-token auth is active."""
+        return bool(self.api_keys)
+
+    @property
+    def cors_origins(self) -> list[str]:
+        """Parsed CORS allow-origins list."""
+        return [o.strip() for o in self.cors_allow_origins.split(",") if o.strip()]
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8", "extra": "ignore"}
 

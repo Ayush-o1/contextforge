@@ -31,8 +31,9 @@ ContextForge is designed to run as a **local proxy** between your application an
 
 - **API keys** are stored in `.env` and passed to upstream providers. Never commit `.env` to version control.
 - **Telemetry data** (prompts, responses, costs) is stored locally in SQLite. It never leaves your machine.
-- **Redis cache** stores response data. Secure your Redis instance if running in a shared environment.
-- **No authentication** is built into ContextForge itself. If exposing it beyond localhost, add a reverse proxy with authentication.
+- **Redis cache** stores response data. Secure your Redis instance if running in a shared environment. If Redis is unreachable, ContextForge degrades to a cache miss rather than failing requests — it does not silently retry indefinitely or block.
+- **Gateway authentication is opt-in and disabled by default** (`CONTEXTFORGE_API_KEYS` unset), which is appropriate for local single-user development. **Set `CONTEXTFORGE_API_KEYS` before exposing ContextForge beyond localhost** — this requires `Authorization: Bearer <token>` on every endpoint except `/health`. See [docs/CONFIGURATION.md](docs/CONFIGURATION.md).
+- **CORS** allows all origins by default but never enables credentialed (cookie) requests, regardless of origin configuration — the gateway is authenticated via bearer token, not cookies.
 
 ## Supported Versions
 

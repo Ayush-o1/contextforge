@@ -128,7 +128,16 @@ class ChatCompletionChunk(BaseModel):
 
 
 class HealthResponse(BaseModel):
-    """Health check response."""
+    """Health check response.
+
+    ``status`` reflects overall liveness (the process is up and serving
+    requests) and stays "ok" even if an optional dependency like Redis is
+    down, since the semantic cache degrades gracefully (see app/cache.py).
+    ``redis`` reports that dependency's reachability separately so callers
+    (and the dashboard) can tell a healthy-but-degraded gateway apart from
+    one that's actually failing to serve requests.
+    """
 
     status: str = "ok"
     version: str = "1.0.0"
+    redis: str = "unknown"

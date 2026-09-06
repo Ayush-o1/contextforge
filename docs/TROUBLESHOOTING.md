@@ -64,7 +64,7 @@ redis.exceptions.ConnectionError: Error connecting to localhost:6379
 docker run -d --name contextforge-redis -p 6379:6379 redis:7-alpine
 ```
 
-> **Note:** The server still starts without Redis, but cache operations will fail. Cache endpoints return partial results (0 Redis keys) instead of crashing.
+> **Note:** The server still starts without Redis, and chat completions still succeed — `SemanticCache.lookup()`/`.store()` catch Redis errors and degrade to a cache miss (see `app/cache.py`) rather than failing the request. `GET /health` reports this via its `redis` field (`"ok"` / `"unreachable"` / `"unknown"`) without failing the liveness check itself. Cache-management endpoints (`/v1/cache/stats`, `DELETE /v1/cache`) similarly return partial results (0 Redis keys) instead of crashing.
 
 ### Redis container exists but stopped
 
@@ -154,6 +154,37 @@ On first run, `sentence-transformers` downloads the `all-MiniLM-L6-v2` model (~8
 1. Check your internet connection
 2. Check if `~/.cache/torch/` is writable
 3. Try: `python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('all-MiniLM-L6-v2')"`
+
+If the model is already cached but startup still pauses for ~10–20s on a `HEAD` request to huggingface.co (e.g. no internet, or behind a firewall), set `HF_HUB_OFFLINE=1` to skip the remote check entirely and load straight from cache.
+
+### `Fatal Python error: Aborted` when running tests on macOS (Apple Silicon)
+
+```
+Fatal Python error: Aborted
+...
+File ".../site-packages/torch/__init__.py", line 496 in <module>
+File ".../site-packages/sentence_transformers/...
+```
+
+This is a known conflict between `faiss-cpu` and `torch` on macOS: both bundle their own OpenMP runtime, and loading both in the same process aborts hard instead of raising a catchable Python exception. It's a local dev-environment issue on macOS specifically — the Linux-based CI and Docker images are unaffected.
+
+**Fix:** set before running tests or the server locally:
+
+```bash
+export KMP_DUPLICATE_LIB_OK=TRUE
+```
+
+This is intentionally **not** set inside application code — it silences a real (if usually harmless, for this workload) OpenMP duplicate-runtime warning, so it should be an explicit choice made by whoever runs the process, not a default baked into `app/`.
+
+### Running the live E2E suite (`tests/test_e2e.py`)
+
+Excluded by default (`pytest tests/` deselects anything marked `e2e` — see `pyproject.toml`). To run it intentionally against a real provider:
+
+```bash
+RUN_E2E_TESTS=1 OPENAI_API_KEY=sk-your-real-key PYTHONPATH=. pytest tests/test_e2e.py -m e2e -v
+```
+
+Requires Redis running and will make real, billed API calls (kept minimal — see the module docstring in `tests/test_e2e.py`).
 
 ---
 

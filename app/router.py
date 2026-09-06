@@ -225,27 +225,3 @@ class ModelRouter:
             token_count=token_count,
         )
 
-
-# ────────────── Module-level convenience function ──────────────────────
-
-_default_router: ModelRouter | None = None
-
-
-def classify_prompt(prompt: str) -> str:
-    """Classify a prompt as 'SIMPLE' or 'COMPLEX'.
-
-    Convenience wrapper around ModelRouter for quick one-off classification.
-    Returns the tier as an uppercase string matching expected_model_tier format.
-    """
-    global _default_router  # noqa: PLW0603
-    if _default_router is None:
-        _default_router = ModelRouter(
-            config_path="config/routing_rules.yaml",
-            preferred_provider="openai",
-        )
-    result = _default_router.route(
-        "gpt-3.5-turbo",
-        [{"role": "user", "content": prompt}],
-    )
-    return result.tier.value.upper()
-
