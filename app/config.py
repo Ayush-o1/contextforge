@@ -87,19 +87,6 @@ class Settings(BaseSettings):
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8", "extra": "ignore"}
 
-    # --- Property aliases for backward compatibility & Phase 4 spec ---
-    @property
-    def context_compression_threshold_tokens(self) -> int:
-        return self.compress_threshold
-
-    @property
-    def compression_min_turns(self) -> int:
-        return self.compress_min_turns
-
-    @property
-    def compression_recent_turns_to_keep(self) -> int:
-        return self.compress_keep_recent
-
 
 @lru_cache
 def get_settings() -> Settings:

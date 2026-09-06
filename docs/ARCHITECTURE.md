@@ -1,207 +1,85 @@
-# ContextForge Architecture
+# Architecture
+
+How ContextForge works internally. For endpoint schemas see [API.md](API.md); for why things were built this way see [DECISIONS.md](DECISIONS.md).
 
 ---
 
 ## Overview
 
-ContextForge is an OpenAI-compatible LLM proxy middleware that sits between LLM-powered applications and upstream providers (OpenAI, Anthropic, Gemini, Groq, Mistral, Ollama, and 100+ more). It exposes an OpenAI-compatible `POST /v1/chat/completions` endpoint so apps can connect with zero code changes. All upstream calls are routed through the **LiteLLM Gateway**, which handles multi-provider auth, retries, and failover automatically. Behind the scenes, ContextForge applies three optimizations to reduce cost and latency:
+ContextForge is an OpenAI-compatible proxy that sits between an app and upstream LLM providers. Apps point their `base_url` at it and change nothing else. Every upstream call goes out through LiteLLM, which handles per-provider auth, retries, and failover.
 
-1. **Context compression** — summarizes long conversation histories to reduce token usage
-2. **Semantic caching** — returns cached responses for semantically similar prompts
-3. **Smart model routing** — routes simple prompts to cheaper models automatically
+Three things happen before a request leaves the building:
+
+1. **Model routing** — cheap prompts go to a cheap model, expensive ones to a strong model
+2. **Context compression** — long conversations get their older turns summarized
+3. **Semantic caching** — near-duplicate prompts are answered from cache instead of the provider
 
 ---
 
-## Request Pipeline
-
-This is the actual request flow as of v1.0.0:
+## Request pipeline
 
 ```
-User App (any OpenAI-compatible SDK)
-  │
-  ▼
-ContextForge Gateway  ←  POST /v1/chat/completions
-  │
-  ├── Model Router         (classify complexity → simple/complex tier)
-  ├── Context Compressor  (summarize long conversation histories)
-  ├── Semantic Cache       (FAISS + Redis — embed → search → Redis fetch)
-  │
-  ▼
-LiteLLM Gateway  ←  unified multi-provider call with failover & retries
-  │
-  ▼
-Provider API  (OpenAI / Anthropic / Gemini / Groq / Mistral / Ollama / 100+)
-```
-
-> **Provider-prefixed models** — pass `model: "groq/llama3-8b-8192"`, `model: "gemini/gemini-1.5-pro"`, or any LiteLLM-supported string directly. The gateway transparently handles auth, retries, and failover.
-
-Detailed pipeline:
-
-```
-Client Request (POST /v1/chat/completions)
+POST /v1/chat/completions
+        │
+        ▼
+  Validate body ─────────────── Pydantic (app/models.py)
+        │
+        ▼
+  Route ────────────────────── token count + keywords → simple | complex
+        │                       (app/router.py, config/routing_rules.yaml)
+        │                       stream=true short-circuits here → LiteLLM
+        ▼
+  Compress ────────────────── only if tokens > threshold AND turns > min
+        │                       (app/compressor.py; skip via X-ContextForge-No-Compress)
+        ▼
+  Cache lookup ───────────── embed → FAISS search → Redis fetch
+        │                     (app/cache.py, threshold auto-tuned by app/adaptive.py)
+        │
+   HIT ─┴─ MISS
+    │      │
+    │      ▼
+    │   LiteLLM Router ────── provider call, retries + failover (app/proxy.py)
+    │      │
+    │      ▼
+    │   Cache store ───────── embed → FAISS add + Redis set (TTL)
+    │      │
+    └──┬───┘
+       ▼
+  Telemetry write ────────── one SQLite row per request (app/middleware.py)
        │
        ▼
-┌─────────────────┐
-│  Validate JSON   │  Pydantic models (app/models.py)
-└────────┬────────┘
-         │
-         ▼
-┌─────────────────┐
-│  Router Classify │  Token count + keyword signals (app/router.py)
-│  Select Model    │  SIMPLE → gpt-3.5-turbo, COMPLEX → gpt-4o
-└────────┬────────┘
-         │
-         ▼
-┌─────────────────┐
-│  Compressor      │  If tokens > threshold AND turns > min_turns:
-│  (non-streaming) │  Summarize older turns via LLM (app/compressor.py)
-│                  │  Skip if X-ContextForge-No-Compress: true
-└────────┬────────┘
-         │
-         ▼
-┌─────────────────┐
-│  Cache Lookup    │  Embed prompt → search FAISS → check Redis
-│  (non-streaming) │  Uses adaptive threshold (auto-tuned from telemetry)
-│                  │  If stream=True → cache + compression SKIPPED
-└────────┬────────┘
-         │
-    ┌────┴────┐
-    │         │
- HIT ↓      MISS ↓
-    │         │
-    │    ┌────────────┐
-    │    │ Proxy Call  │  Forward to upstream with routed model
-    │    └────┬───────┘
-    │         │
-    │    ┌────────────┐
-    │    │ Cache Store │  Save response in Redis + embed in FAISS
-    │    └────┬───────┘
-    │         │
-    └────┬────┘
-         │
-         ▼
-┌─────────────────┐
-│ Telemetry Write │  Log model, latency, cost, cache hit, compression
-│                 │  (app/telemetry.py → SQLite WAL mode)
-└────────┬────────┘
-         │
-         ▼
-┌─────────────────┐
-│  Return Response │  + X-Cache (HIT/MISS), X-Model-Tier, X-Model-Selected,
-│                  │    X-Compressed, X-Compression-Ratio, X-Similarity headers
-└──────────────────┘
+  Response + X-Cache, X-Model-Tier, X-Model-Selected,
+             X-Compressed, X-Compression-Ratio, X-Similarity
 ```
 
-**Non-streaming:** Request → Validate → Router (classify + select model) → Compressor → Cache Lookup → LiteLLM Gateway → Cache Store → Telemetry → Response
-
-**Streaming:** Request → Validate → Router → LiteLLM Gateway (bypasses compression and caching entirely)
+**Streaming** (`"stream": true`) skips compression and caching entirely — a token stream can't be matched against a cache before it exists, and buffering it to compress would defeat the point of streaming. It still gets routed and still writes telemetry.
 
 ---
 
-## Component Diagram
+## Components
 
+| Layer | Responsibility | Files |
+|-------|---------------|-------|
+| API gateway | Validates requests, orchestrates the pipeline | `app/main.py`, `app/models.py` |
+| Model router | Classifies prompt complexity, picks the model tier | `app/router.py`, `config/routing_rules.yaml` |
+| Context compressor | Summarizes older turns to cut token count | `app/compressor.py` |
+| Semantic cache | Embeds prompts, searches FAISS, reads/writes Redis | `app/cache.py`, `app/embedder.py`, `app/vector_store.py` |
+| Upstream client | Forwards to providers with retries + failover | `app/proxy.py` |
+| Telemetry | Per-request SQLite row; aggregation queries | `app/telemetry.py`, `app/costs.py`, `app/middleware.py` |
+| Adaptive threshold | Tunes the cache similarity threshold from hit rates | `app/adaptive.py` |
+| Auth | Opt-in bearer-token check | `app/auth.py` |
+| Dashboard | Reads the telemetry API, renders it | `docs/dashboard/` |
+| Benchmarks | Offline routing-accuracy / cache / latency measurement | `benchmarks/` |
 
-```
-┌──────────────────┐     ┌────────────────────┐
-│   Client / SDK   │────▶│  FastAPI Gateway    │
-└──────────────────┘     │  (app/main.py)      │
-                         └──────┬─────────────┘
-                                │
-              ┌─────────────────┼──────────────────┐
-              │                 │                   │
-              ▼                 ▼                   ▼
-    ┌──────────────┐  ┌──────────────┐   ┌──────────────────────┐
-    │ Model Router │  │ Semantic     │   │ LiteLLM Gateway      │
-    │ (router.py)  │  │ Cache        │   │ (proxy.py)           │
-    │              │  │ (cache.py)   │   │                      │
-    │ tiktoken +   │  │              │   │ 100+ providers:      │
-    │ keywords     │  │ Embedder +   │   │ OpenAI / Gemini /    │
-    └──────────────┘  │ VectorStore  │   │ Groq / Mistral /     │
-                      └──────┬───────┘   │ Anthropic / Ollama   │
-                             │           └──────────┬───────────┘
-                      ┌──────┴───────┐             │
-                      │ FAISS Index  │             ▼
-                      │ Redis Cache  │   ┌──────────────────────┐
-                      └──────────────┘   │ Provider API         │
-                                         └──────────────────────┘
-
-    ┌──────────────┐   ┌──────────────────┐   ┌────────────────┐
-    │ Adaptive     │   │ Context          │   │ Telemetry      │
-    │ Threshold    │   │ Compressor       │   │ Writer         │
-    │ Manager      │   │ (compressor.py)  │   │ (telemetry.py) │
-    │ (adaptive.py)│   │                  │   │ SQLite + WAL   │
-    └──────────────┘   └──────────────────┘   └────────────────┘
-
-    ┌──────────────────┐   ┌───────────────────────┐
-    │ Benchmark Runner │   │ Dashboard              │
-    │ (benchmarks/)    │   │ (docs/dashboard/)      │
-    └──────────────────┘   │ Static HTML/JS/CSS     │
-                           │ → fetches /v1/telemetry│
-                           └───────────────────────┘
-```
+**Concurrency note:** `VectorStore` guards all FAISS writes with a `threading.Lock` — FAISS index objects aren't thread-safe, and Uvicorn serves requests concurrently. SQLite runs in WAL mode so telemetry writes don't block reads.
 
 ---
 
-## Layer Responsibilities
+## Data model
 
-| # | Layer | Responsibility | Files |
-|---|-------|---------------|-------|
-| 1 | API Gateway | Receives and validates OpenAI-compatible requests | `app/main.py`, `app/models.py` |
-| 2 | Model Router | Classifies prompt complexity, selects model tier | `app/router.py`, `config/routing_rules.yaml` |
-| 3 | Context Compressor | Summarizes long conversations to reduce token count | `app/compressor.py` |
-| 4 | Semantic Cache | Embeds prompts, searches FAISS, manages Redis cache | `app/cache.py`, `app/embedder.py`, `app/vector_store.py` |
-| 5 | LiteLLM Gateway | Forwards requests to 100+ upstream LLM providers with failover | `app/proxy.py` |
-| 6 | Telemetry | Tracks per-request metrics in SQLite (WAL mode) | `app/telemetry.py`, `app/costs.py` |
-| 7 | Middleware | Wraps requests with telemetry state | `app/middleware.py` |
-| 8 | Adaptive Thresholds | Auto-tunes similarity threshold from cache hit rates | `app/adaptive.py` |
-| 9 | Cache Management | Flush/invalidate cache entries, stats | `app/cache.py`, `app/main.py` |
-| 10 | Dashboard | Real-time telemetry visualization | `docs/dashboard/` |
-| 11 | Benchmarks | E2E tests for routing, caching, and latency | `benchmarks/` |
-| 12 | Config | Loads and validates environment variables at startup | `app/config.py` |
+Two SQLite tables in `./data/telemetry.db`, created at startup.
 
----
-
-## Dashboard Architecture
-
-The dashboard is a standalone static web app at `docs/dashboard/`. It connects to the backend API for live data and falls back to mock data when the backend is unavailable.
-
-```
-docs/dashboard/
-├── index.html          # Page shell with all sections
-├── css/style.css       # Design system (dark theme)
-└── js/
-    ├── data.js         # Demo dataset (used only if the backend is unreachable)
-    ├── ui.js           # Toast, modal, sidebar, connection check, formatters
-    ├── charts.js       # Chart.js chart initialization
-    ├── tables.js       # HTML escaping, table rendering + pagination
-    └── app.js          # Navigation, data loading + aggregation, button handlers
-```
-
-**API endpoints used by dashboard:** `GET /health`, `GET /v1/telemetry`, `GET /v1/telemetry/summary`, `GET /v1/cache/stats`, `GET /v1/threshold`, `POST /v1/threshold/evaluate`, `DELETE /v1/cache`. Full details in [DASHBOARD.md](DASHBOARD.md).
-
----
-
-## Technology Stack
-
-| Component | Technology | Version |
-|-----------|-----------|---------| 
-| Web Framework | FastAPI | 0.115.6 |
-| **LLM Gateway** | **LiteLLM** | 1.x |
-| Embedding Model | all-MiniLM-L6-v2 | via sentence-transformers 3.3.1 |
-| Vector Index | FAISS (CPU) | 1.9.0.post1 |
-| Cache Store | Redis | 7 (Alpine) |
-| Token Counter | tiktoken | 0.8.0 |
-| Config | Pydantic Settings | 2.7.1 |
-| Logging | structlog | 24.4.0 |
-| Testing | pytest + httpx | 8.3.4 / 0.28.1 |
-| Dashboard | Chart.js 4.x | CDN |
-| Containerization | Docker + Docker Compose | — |
-
----
-
-## Telemetry Schema
-
-Implemented in `app/telemetry.py` using SQLite with WAL mode for concurrent writes:
+**`telemetry`** — one row per request, written by `TelemetryMiddleware`. Includes cache hits, which never reach a provider.
 
 ```sql
 CREATE TABLE telemetry (
@@ -210,8 +88,8 @@ CREATE TABLE telemetry (
     timestamp           DATETIME,
     model_requested     TEXT,
     model_used          TEXT,
-    tier                TEXT,    -- 'simple' or 'complex', from ModelRouter
-    routing_reason      TEXT,    -- e.g. 'token_count:150<=200', 'complex_keyword:analyze'
+    tier                TEXT,    -- 'simple' | 'complex'
+    routing_reason      TEXT,    -- 'token_count:150<=200', 'complex_keyword:analyze', ...
     cache_hit           BOOLEAN,
     similarity_score    REAL,
     prompt_tokens       INTEGER,
@@ -224,31 +102,57 @@ CREATE TABLE telemetry (
 CREATE INDEX idx_telemetry_timestamp ON telemetry(timestamp);
 ```
 
-`tier`/`routing_reason` were added so the dashboard's Router page could show a real simple/complex breakdown of live traffic instead of a fabricated one — see [DASHBOARD.md](DASHBOARD.md).
+The index exists because every read path (`GET /v1/telemetry`, the dashboard's time-range filter) sorts by `timestamp DESC`; without it those are full table scans.
 
-**Endpoints:**
-- `GET /v1/telemetry?limit=50&offset=0` — paginated records, newest first
-- `GET /v1/telemetry/summary` — aggregated stats (total requests, cache hit rate, avg latency, total cost, p95 latency)
+`tier` and `routing_reason` are stored, not just returned in response headers, so routing behaviour can be analyzed after the fact — that's what lets the dashboard show a real tier breakdown instead of a made-up one.
+
+**`request_log`** — written by the LiteLLM success callback in `proxy.py`, only for calls that actually hit a provider. Carries real cost from `litellm.completion_cost()`, which is why `/admin/usage` and `/admin/savings` read from here rather than from the estimated costs in `telemetry`.
+
+Cache hits appear in `telemetry` but never in `request_log`. That split is deliberate: `telemetry` answers "what did the gateway do?", `request_log` answers "what did we actually pay for?".
+
+**`threshold_history`** — one row per adaptive-threshold evaluation (`threshold`, `cache_hit_rate`, `evaluated_at`).
 
 ---
 
-## Adaptive Threshold Schema
+## Semantic cache
 
-```sql
-CREATE TABLE threshold_history (
-    id              INTEGER PRIMARY KEY AUTOINCREMENT,
-    threshold       REAL NOT NULL,
-    cache_hit_rate  REAL NOT NULL,
-    evaluated_at    TEXT NOT NULL
-);
+Prompts are embedded locally with `all-MiniLM-L6-v2` (384-dim, CPU, no API call) and searched against a FAISS `IndexFlatIP` index. Vectors are L2-normalized, so inner product equals cosine similarity. A hit above the active threshold fetches the stored response from Redis by content hash.
+
+**Redis is an optimization, not a dependency.** `lookup()` and `store()` catch Redis errors and degrade to a cache miss — a Redis outage makes the gateway slower and more expensive, not broken. `/health` reports Redis reachability separately from process liveness for this reason.
+
+**Adaptive threshold** — `ThresholdManager` reads recent hit rates from `telemetry` and nudges the similarity threshold: above 60% hit rate it tightens by 0.01 (the cache is probably serving loose matches), below 20% it loosens, clamped to `[min, max]`.
+
+---
+
+## Dashboard
+
+Static HTML/CSS/JS in `docs/dashboard/` — no build step, no framework. Served at `/dashboard/` by the app, or openable as a file.
+
+```
+docs/dashboard/
+├── index.html
+├── css/style.css
+└── js/
+    ├── data.js      # demo dataset — used only when the backend is unreachable
+    ├── ui.js        # toast, modal, sidebar, connection check, formatters
+    ├── charts.js    # Chart.js setup
+    ├── tables.js    # HTML escaping, table rendering, pagination, filters
+    └── app.js       # navigation, data loading + aggregation, button handlers
 ```
 
-**Endpoints:**
-- `GET /v1/threshold` — current threshold, baseline, last evaluation
-- `POST /v1/threshold/evaluate` — manually trigger threshold evaluation
-- `GET /v1/cache/stats` — vector count, Redis keys, active threshold
-- `DELETE /v1/cache` — flush FAISS + Redis
-- `DELETE /v1/cache/{key}` — invalidate a specific entry
+Pages: **Overview** (summary cards, trends, recent requests), **Requests** (filterable log + CSV export), **Cache** (FAISS/Redis stats, similarity distribution, recent hits), **Router** (tier split, routing reasons), **Telemetry** (cost/latency/hit-rate trends), **Threshold** (current vs. baseline, manual evaluate).
+
+Uses `GET /health`, `GET /v1/telemetry`, `GET /v1/telemetry/summary`, `GET /v1/cache/stats`, `GET /v1/threshold`, `POST /v1/threshold/evaluate`, `DELETE /v1/cache`. If `CONTEXTFORGE_API_KEYS` is set, all of them except `/health` need a bearer token — set one with `localStorage.setItem('contextforge_api_key', 'your-token')`.
+
+Three decisions worth knowing about:
+
+**One aggregation path for real and demo data.** `aggregateByDay()`, `aggregateByReason()`, `tierCounts()`, and `similarityScoresFromHits()` in `app.js` run over a plain list of requests, whichever source it came from. The demo dataset can't drift from what the real dashboard shows, because there's no second code path for it to drift in.
+
+**No live "routing accuracy".** Accuracy needs a ground-truth label — "was `complex` the right call for this prompt?" — and production traffic doesn't come with one. The only real accuracy number comes from the offline benchmark against the labeled 1,000-prompt set (`benchmarks/`). The Router page shows the live tier split and routing reasons instead of inventing a number the system has no way to know.
+
+**No cache-entry browser.** The backend stores response hashes and FAISS vectors, never prompt text, so there is genuinely no per-entry list to render. The Cache page shows aggregate stats plus which recent requests were served from cache.
+
+**Escaping is load-bearing.** `model_used` is attacker-controllable — a client can set it through the `X-ContextForge-Model-Override` header, which the router passes through unsanitized. Every dynamic value goes through `escapeHtml()` in `tables.js` before reaching `innerHTML`. Don't reintroduce raw interpolation for these fields.
 
 ---
 
@@ -256,18 +160,24 @@ CREATE TABLE threshold_history (
 
 | Concern | Approach |
 |---------|----------|
-| Gateway auth | Opt-in bearer-token check (`app/auth.py`) on every endpoint except `/health`, enabled by setting `CONTEXTFORGE_API_KEYS`. Off by default for local dev — see ADR-005. |
-| CORS | Configurable allowed origins (`CORS_ALLOW_ORIGINS`), credentialed (cookie) CORS never enabled regardless of origin config. |
-| Redis outage | `SemanticCache.lookup()`/`.store()` catch Redis errors and degrade to a cache miss rather than failing the request — the cache is an optimization, not a hard dependency. |
-| Secrets | Provider API keys live in `.env` (gitignored) and are mapped into `os.environ` for LiteLLM at startup; never logged or returned in responses. |
-
-See [SECURITY.md](../SECURITY.md) for the full threat model and vulnerability reporting process.
+| Gateway auth | Opt-in bearer token (`app/auth.py`) on everything except `/health`, enabled by setting `CONTEXTFORGE_API_KEYS`; constant-time comparison. Off by default for local dev — see ADR-005. |
+| CORS | Origins configurable via `CORS_ALLOW_ORIGINS`; credentialed (cookie) CORS is never enabled, so a wildcard origin carries no CSRF risk. |
+| XSS | All dynamic values escaped before HTML insertion in the dashboard (see above). |
+| Secrets | Provider keys live in `.env` (gitignored), mapped into `os.environ` for LiteLLM at startup; never logged or echoed in responses. |
+| Data locality | Prompts, responses, and telemetry stay on the machine — SQLite file, local Redis, local embedding model. Nothing is sent anywhere except the LLM provider the caller chose. |
+| Redis outage | Degrades to a cache miss instead of failing the request. |
 
 ---
 
-## Architecture Decision Records
+## Stack
 
-All ADRs are documented in [DECISIONS.md](../DECISIONS.md).
+FastAPI + Uvicorn · LiteLLM · sentence-transformers (`all-MiniLM-L6-v2`) · FAISS (CPU) · Redis 7 · SQLite (WAL) · tiktoken · Pydantic Settings · structlog · pytest + ruff · Chart.js (dashboard) · Docker Compose (local dev).
+
+Pinned versions live in `requirements.txt`.
+
+---
+
+## Decisions
 
 | ADR | Decision |
 |-----|----------|
@@ -278,5 +188,4 @@ All ADRs are documented in [DECISIONS.md](../DECISIONS.md).
 | ADR-005 | Opt-in bearer-token auth over a mandatory auth layer |
 | ADR-006 | E2E tests isolated by pytest marker, not skip-on-missing-key |
 
-Each ADR includes context, decision rationale, and a documented upgrade path.
-
+Full context and upgrade paths in [DECISIONS.md](DECISIONS.md).

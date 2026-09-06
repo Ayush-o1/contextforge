@@ -6,9 +6,9 @@ authenticates callers *to* ContextForge, so the gateway can be safely exposed
 beyond localhost.
 
 Disabled by default (CONTEXTFORGE_API_KEYS unset) to keep local single-user
-development frictionless, matching the documented threat model in
-SECURITY.md. Set CONTEXTFORGE_API_KEYS to one or more comma-separated tokens
-to require `Authorization: Bearer <token>` on every protected request.
+development frictionless. Set CONTEXTFORGE_API_KEYS to one or more
+comma-separated tokens to require `Authorization: Bearer <token>` on every
+protected request. See docs/ARCHITECTURE.md for the threat model.
 """
 
 from __future__ import annotations

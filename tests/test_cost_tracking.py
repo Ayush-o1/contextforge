@@ -1,4 +1,5 @@
-"""Phase 3 tests — cost tracking, request_log DB, and admin API endpoints.
+"""Cost tracking — the request_log table, LiteLLM's cost callback, and the
+admin endpoints that read them.
 
 All tests use in-memory or temp-file SQLite; no live API calls are made.
 """

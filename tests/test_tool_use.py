@@ -1,4 +1,4 @@
-"""Phase 5 tests — universal tool/function calling support.
+"""Universal tool/function calling support.
 
 Tests:
   - forward_with_tools() passes tools through to the router payload

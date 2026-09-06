@@ -14,7 +14,7 @@ http://localhost:8000
 
 ## Authentication
 
-Disabled by default. If `CONTEXTFORGE_API_KEYS` is set (see [CONFIGURATION.md](CONFIGURATION.md)), every endpoint below except `GET /health` requires:
+Disabled by default. If `CONTEXTFORGE_API_KEYS` is set (see `.env.example`), every endpoint below except `GET /health` requires:
 
 ```
 Authorization: Bearer <token>
@@ -310,9 +310,4 @@ Invalidate a specific cache entry by its key. Removes both the FAISS vector and 
 
 ## Dashboard
 
-The telemetry dashboard is a static web application located at `docs/dashboard/index.html`. It fetches data from the telemetry API endpoints listed above.
-
-- **Backend running:** Open `docs/dashboard/index.html` — it connects to `http://localhost:8000` and shows live data.
-- **Backend down:** The dashboard falls back to built-in mock data for demos and development.
-
-For full dashboard documentation, see [DASHBOARD.md](DASHBOARD.md).
+The dashboard at `/dashboard/` consumes the endpoints above. If the backend is unreachable it falls back to a demo dataset and labels itself as such. See [ARCHITECTURE.md](ARCHITECTURE.md#dashboard).

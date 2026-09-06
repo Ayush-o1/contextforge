@@ -48,7 +48,7 @@ def init_db() -> None:
         # time-range filtering — without it, every telemetry page/filter does
         # a full table scan.
         conn.execute("CREATE INDEX IF NOT EXISTS idx_telemetry_timestamp ON telemetry(timestamp)")
-    # Also ensure the Phase-3 request_log table exists
+    # request_log is a separate table with different semantics — see below
     init_request_log()
 
 
@@ -121,7 +121,7 @@ def get_summary() -> dict[str, Any]:
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# Phase 3 — request_log table (LiteLLM callback-driven, accurate cost data)
+# request_log — written by LiteLLM's success callback, carries real cost data
 # ═══════════════════════════════════════════════════════════════════════════
 
 _REQUEST_LOG_COLS = (
@@ -295,7 +295,7 @@ def get_usage_summary(
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# Phase 5 — Total savings calculator
+# Total savings calculator
 # ═══════════════════════════════════════════════════════════════════════════
 
 # Reference pricing used for savings estimation (per 1M tokens, USD)

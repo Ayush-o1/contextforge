@@ -1,4 +1,4 @@
-"""Phase 2 tests: LiteLLM Router failover and caching behaviour.
+"""LiteLLM Router failover and caching behaviour.
 
 Tests:
   - ProxyClient initialises a Router with the correct model list

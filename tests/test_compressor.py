@@ -6,7 +6,6 @@ Covers:
   - compress_context() happy path, error fallback, system message preservation
   - compress_context_with_metadata() metadata fields
   - Header bypass (no-compress) integration with the pipeline
-  - Config alias properties
 """
 from __future__ import annotations
 
@@ -179,7 +178,7 @@ async def test_system_messages_preserved():
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# 4. compress_context_with_metadata() — Phase 4 additions
+# 4. compress_context_with_metadata()
 # ═══════════════════════════════════════════════════════════════════════════
 
 
@@ -270,26 +269,7 @@ async def test_metadata_fallback_on_error():
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# 5. Config alias properties
-# ═══════════════════════════════════════════════════════════════════════════
-
-
-def test_config_compression_aliases():
-    """All three Phase 4 property aliases must resolve to the underlying field values."""
-    from app.config import Settings
-
-    s = Settings(
-        compress_threshold=3000,
-        compress_min_turns=8,
-        compress_keep_recent=6,
-    )
-    assert s.context_compression_threshold_tokens == 3000
-    assert s.compression_min_turns == 8
-    assert s.compression_recent_turns_to_keep == 6
-
-
-# ═══════════════════════════════════════════════════════════════════════════
-# 6. Header bypass integration test
+# 5. Header bypass integration test
 # ═══════════════════════════════════════════════════════════════════════════
 
 

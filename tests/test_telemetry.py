@@ -1,4 +1,5 @@
-# Phase 1 implementation
+"""Telemetry writes, reads, aggregation, and cost estimation."""
+
 import pytest
 
 from app.costs import estimate_cost
