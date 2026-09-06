@@ -170,20 +170,14 @@ docs/dashboard/
 ├── index.html          # Page shell with all sections
 ├── css/style.css       # Design system (dark theme)
 └── js/
-    ├── data.js         # Mock data + connection check
-    ├── ui.js           # Toast, modal, sidebar, formatters
-    ├── charts.js       # 6 Chart.js charts
-    ├── tables.js       # Table rendering + pagination
-    └── app.js          # Navigation, data loading, normalization
+    ├── data.js         # Demo dataset (used only if the backend is unreachable)
+    ├── ui.js           # Toast, modal, sidebar, connection check, formatters
+    ├── charts.js       # Chart.js chart initialization
+    ├── tables.js       # HTML escaping, table rendering + pagination
+    └── app.js          # Navigation, data loading + aggregation, button handlers
 ```
 
-**API endpoints used by dashboard:**
-- `GET /health` — connection detection
-- `GET /v1/telemetry?limit=50` — request records
-- `GET /v1/telemetry/summary` — aggregated metrics
-- `GET /v1/cache/stats` — cache statistics
-
-For full details, see [DASHBOARD.md](DASHBOARD.md).
+**API endpoints used by dashboard:** `GET /health`, `GET /v1/telemetry`, `GET /v1/telemetry/summary`, `GET /v1/cache/stats`, `GET /v1/threshold`, `POST /v1/threshold/evaluate`, `DELETE /v1/cache`. Full details in [DASHBOARD.md](DASHBOARD.md).
 
 ---
 
@@ -216,6 +210,8 @@ CREATE TABLE telemetry (
     timestamp           DATETIME,
     model_requested     TEXT,
     model_used          TEXT,
+    tier                TEXT,    -- 'simple' or 'complex', from ModelRouter
+    routing_reason      TEXT,    -- e.g. 'token_count:150<=200', 'complex_keyword:analyze'
     cache_hit           BOOLEAN,
     similarity_score    REAL,
     prompt_tokens       INTEGER,
@@ -225,7 +221,10 @@ CREATE TABLE telemetry (
     compressed          BOOLEAN,
     compression_ratio   REAL
 );
+CREATE INDEX idx_telemetry_timestamp ON telemetry(timestamp);
 ```
+
+`tier`/`routing_reason` were added so the dashboard's Router page could show a real simple/complex breakdown of live traffic instead of a fabricated one — see [DASHBOARD.md](DASHBOARD.md).
 
 **Endpoints:**
 - `GET /v1/telemetry?limit=50&offset=0` — paginated records, newest first

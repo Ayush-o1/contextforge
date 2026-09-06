@@ -204,6 +204,9 @@ async def chat_completions(request: Request, body: ChatCompletionRequest):
         # --- Model routing ---
         override_model = request.headers.get("x-contextforge-model-override")
         routing = router.route(body.model, messages_dicts, override_model=override_model)
+        request.state.model_used = routing.model_selected
+        request.state.tier = routing.tier.value
+        request.state.routing_reason = routing.reason
 
         # Streaming bypasses cache and compression
         if body.stream:
@@ -242,8 +245,6 @@ async def chat_completions(request: Request, body: ChatCompletionRequest):
 
         if cache_result.hit:
             # --- Telemetry: cache hit ---
-            request.state.model_requested = body.model
-            request.state.model_used = routing.model_selected
             request.state.cache_hit = True
             request.state.similarity_score = cache_result.similarity_score
             request.state.prompt_tokens = 0
@@ -271,8 +272,6 @@ async def chat_completions(request: Request, body: ChatCompletionRequest):
 
         # --- Telemetry: cache miss ---
         usage = response_data.get("usage") or {}
-        request.state.model_requested = body.model
-        request.state.model_used = routing.model_selected
         request.state.cache_hit = False
         request.state.similarity_score = None
         request.state.prompt_tokens = usage.get("prompt_tokens", 0)

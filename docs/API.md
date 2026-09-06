@@ -160,6 +160,8 @@ Returns paginated telemetry records, newest first. All data is stored locally in
       "timestamp": "2026-03-27T02:00:00",
       "model_requested": "gpt-3.5-turbo",
       "model_used": "gpt-3.5-turbo",
+      "tier": "simple",
+      "routing_reason": "token_count:12<=200",
       "cache_hit": false,
       "similarity_score": 0.0,
       "prompt_tokens": 14,

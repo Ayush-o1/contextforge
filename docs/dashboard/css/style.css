@@ -551,25 +551,6 @@ table {
   line-height: 1.1;
 }
 
-.metric-change {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 0.75rem;
-  font-weight: 500;
-  margin-top: var(--space-sm);
-  padding: 2px 8px;
-  border-radius: var(--radius-full);
-}
-.metric-change.up {
-  color: var(--success);
-  background: var(--success-subtle);
-}
-.metric-change.down {
-  color: var(--error);
-  background: var(--error-subtle);
-}
-
 /* === CHART CARDS === */
 .charts-grid {
   display: grid;
@@ -833,17 +814,6 @@ select option {
   color: var(--text-primary);
 }
 
-.form-group {
-  margin-bottom: var(--space-lg);
-}
-.form-label {
-  display: block;
-  font-size: 0.78rem;
-  font-weight: 500;
-  color: var(--text-secondary);
-  margin-bottom: var(--space-xs);
-}
-
 /* === FILTER BAR === */
 .filter-bar {
   display: flex;
@@ -1059,27 +1029,10 @@ select option {
   font-weight: 600;
   color: var(--text-secondary);
 }
-
-/* === SETTINGS === */
-.settings-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-  gap: var(--space-xl);
-}
-
-.settings-section {
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-primary);
-  border-radius: var(--radius-lg);
-  padding: var(--space-xl);
-}
-
-.settings-section-title {
-  font-size: 0.9rem;
-  font-weight: 600;
-  margin-bottom: var(--space-lg);
-  padding-bottom: var(--space-md);
-  border-bottom: 1px solid var(--border-primary);
+.progress-ring-caption {
+  font-size: 0.72rem;
+  color: var(--text-tertiary);
+  margin-top: -4px;
 }
 
 .settings-actions {
@@ -1195,9 +1148,6 @@ select option {
   }
   .charts-grid .chart-card {
     min-width: 0;
-  }
-  .settings-grid {
-    grid-template-columns: 1fr;
   }
   .header {
     padding: 0 var(--space-lg);
@@ -1399,8 +1349,7 @@ select option {
 
 /* === ENHANCED CARD ENTRANCE === */
 .chart-card,
-.table-card,
-.settings-section {
+.table-card {
   opacity: 0;
   transform: translateY(16px);
   animation: cardEnter 0.5s var(--ease-out) forwards;

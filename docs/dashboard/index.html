@@ -56,9 +56,9 @@
         </div>
 
         <div class="sidebar-section-label">System</div>
-        <div class="nav-item" data-page="settings">
+        <div class="nav-item" data-page="threshold">
           <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg>
-          <span class="nav-item-text">Settings</span>
+          <span class="nav-item-text">Threshold</span>
         </div>
       </nav>
 
@@ -88,7 +88,6 @@
             <button class="time-range-btn active" data-range="7d">7D</button>
             <button class="time-range-btn" data-range="30d">30D</button>
           </div>
-          <button id="simulate-btn" class="btn btn-primary btn-sm" data-action="simulate">⚡ Simulate</button>
           <button id="live-refresh-btn" class="live-refresh-toggle" data-action="toggle-live-refresh" title="Auto-refresh every 10 seconds">
             <span class="live-refresh-dot"></span>
             <span class="live-refresh-label">Live</span>
@@ -117,25 +116,21 @@
               <div class="metric-icon blue">📊</div>
               <div class="metric-label">Total Requests</div>
               <div class="metric-value" id="metric-total-requests">0</div>
-              <div class="metric-change up">↑ 12.4%</div>
             </div>
             <div class="metric-card">
               <div class="metric-icon green">🎯</div>
               <div class="metric-label">Cache Hit Rate</div>
               <div class="metric-value" id="metric-hit-rate">0%</div>
-              <div class="metric-change up">↑ 3.2%</div>
             </div>
             <div class="metric-card">
               <div class="metric-icon orange">⚡</div>
               <div class="metric-label">Avg Latency</div>
               <div class="metric-value" id="metric-avg-latency">0ms</div>
-              <div class="metric-change down">↓ 8.1%</div>
             </div>
             <div class="metric-card">
               <div class="metric-icon purple">💰</div>
               <div class="metric-label">Total Cost</div>
               <div class="metric-value" id="metric-total-cost">$0</div>
-              <div class="metric-change up">↑ 5.7%</div>
             </div>
           </div>
 
@@ -200,25 +195,14 @@
           </div>
 
           <div class="filter-bar">
-            <input id="req-search" class="input" type="text" placeholder="Search by ID, model, or endpoint…">
+            <input id="req-search" class="input" type="text" placeholder="Search by ID or model…">
             <select id="filter-model" class="select-input">
               <option value="">All Models</option>
-              <option value="gpt-4o">gpt-4o</option>
-              <option value="gpt-4o-mini">gpt-4o-mini</option>
-              <option value="claude-3.5-sonnet">claude-3.5-sonnet</option>
-              <option value="claude-3-haiku">claude-3-haiku</option>
-              <option value="gemini-1.5-pro">gemini-1.5-pro</option>
-              <option value="gemini-1.5-flash">gemini-1.5-flash</option>
             </select>
             <select id="filter-status" class="select-input">
-              <option value="">All Statuses</option>
+              <option value="">All Cache Status</option>
               <option value="HIT">Cache HIT</option>
               <option value="MISS">Cache MISS</option>
-            </select>
-            <select id="cache-filter" class="select-input">
-              <option value="">All Cache</option>
-              <option value="hit">Hits Only</option>
-              <option value="miss">Misses Only</option>
             </select>
             <select id="tier-filter" class="select-input">
               <option value="">All Tiers</option>
@@ -235,7 +219,7 @@
                     <th>Request ID</th>
                     <th>Time</th>
                     <th>Model</th>
-                    <th>Endpoint</th>
+                    <th>Tier</th>
                     <th>Tokens (In/Out)</th>
                     <th>Latency</th>
                     <th>Cost</th>
@@ -270,13 +254,13 @@
           <div class="metrics-grid">
             <div class="metric-card">
               <div class="metric-icon cyan">📦</div>
-              <div class="metric-label">Total Entries</div>
+              <div class="metric-label">Vectors (FAISS)</div>
               <div class="metric-value" id="cache-total-entries">—</div>
             </div>
             <div class="metric-card">
-              <div class="metric-icon blue">💾</div>
-              <div class="metric-label">Memory Usage</div>
-              <div class="metric-value" id="cache-memory">—</div>
+              <div class="metric-icon blue">🗝️</div>
+              <div class="metric-label">Redis Keys</div>
+              <div class="metric-value" id="cache-redis-keys">—</div>
             </div>
             <div class="metric-card">
               <div class="metric-icon green">🎯</div>
@@ -285,8 +269,8 @@
             </div>
             <div class="metric-card">
               <div class="metric-icon purple">📐</div>
-              <div class="metric-label">Avg Similarity</div>
-              <div class="metric-value" id="cache-avg-sim">—</div>
+              <div class="metric-label">Active Threshold</div>
+              <div class="metric-value" id="cache-threshold">—</div>
             </div>
           </div>
 
@@ -295,7 +279,7 @@
               <div class="chart-card-header">
                 <div>
                   <div class="chart-card-title">Similarity Distribution</div>
-                  <div class="chart-card-subtitle">Cache entry similarity scores</div>
+                  <div class="chart-card-subtitle">Score distribution of recent cache hits (avg: <span id="cache-avg-sim">—</span>)</div>
                 </div>
               </div>
               <div class="chart-wrapper">
@@ -306,20 +290,18 @@
 
           <div class="table-card">
             <div class="table-card-header">
-              <div class="table-card-title">Cache Entries</div>
-              <span class="text-muted" style="font-size:0.78rem">Sorted by hit count</span>
+              <div class="table-card-title">Recent Cache Hits</div>
+              <span class="text-muted" style="font-size:0.78rem">The backend never stores prompt text — only response hashes and vectors — so there's no entry list to browse, just what was recently served from cache</span>
             </div>
             <div class="table-wrapper">
               <table>
                 <thead>
                   <tr>
-                    <th>Key</th>
-                    <th>Prompt Preview</th>
+                    <th>Request ID</th>
                     <th>Model</th>
                     <th>Similarity</th>
-                    <th>Hits</th>
-                    <th>Size</th>
-                    <th>TTL</th>
+                    <th>Time</th>
+                    <th>Cost Saved</th>
                   </tr>
                 </thead>
                 <tbody id="cache-tbody"></tbody>
@@ -334,7 +316,7 @@
         <section id="page-router" class="page">
           <div class="page-header">
             <h2 class="page-title">Smart Router</h2>
-            <p class="page-subtitle">AI-powered request routing to optimal models</p>
+            <p class="page-subtitle">Rule-based classifier — token count + keyword rules pick simple vs. complex per request (see config/routing_rules.yaml)</p>
           </div>
 
           <div class="accuracy-display">
@@ -344,6 +326,7 @@
                 <circle id="accuracy-ring-fill" class="progress-ring-fill" cx="64" cy="64" r="54"/>
               </svg>
               <div id="accuracy-ring-label" class="progress-ring-label">—</div>
+              <div class="progress-ring-caption">routed to complex tier</div>
             </div>
             <div class="accuracy-stats">
               <div class="stat-inline">
@@ -351,22 +334,29 @@
                 <span id="router-total-requests" class="stat-inline-value">—</span>
               </div>
               <div class="stat-inline">
-                <span class="stat-inline-label">Avg Accuracy</span>
-                <span id="router-avg-accuracy" class="stat-inline-value">—</span>
+                <span class="stat-inline-label">Simple Tier</span>
+                <span id="router-simple-count" class="stat-inline-value">—</span>
               </div>
               <div class="stat-inline">
-                <span class="stat-inline-label">Categories</span>
-                <span id="router-categories" class="stat-inline-value">—</span>
+                <span class="stat-inline-label">Complex Tier</span>
+                <span id="router-complex-count" class="stat-inline-value">—</span>
               </div>
             </div>
           </div>
+
+          <p class="text-muted" style="font-size:0.8rem;margin:-8px 0 20px">
+            Classification <strong>accuracy</strong> needs ground-truth labels, which live traffic doesn't have —
+            it's measured offline against a labeled 1,000-prompt set instead (~88% last run; see
+            <code>benchmarks/run_benchmark.py</code>). What's shown here is the real tier split and reasons
+            from recent traffic.
+          </p>
 
           <div class="charts-grid">
             <div class="chart-card">
               <div class="chart-card-header">
                 <div>
-                  <div class="chart-card-title">Model Assignment</div>
-                  <div class="chart-card-subtitle">Requests distributed by routed model</div>
+                  <div class="chart-card-title">Tier Split</div>
+                  <div class="chart-card-subtitle">Requests classified simple vs. complex</div>
                 </div>
               </div>
               <div class="chart-wrapper">
@@ -377,18 +367,17 @@
 
           <div class="table-card">
             <div class="table-card-header">
-              <div class="table-card-title">Routing Categories</div>
+              <div class="table-card-title">Routing Reasons</div>
+              <span class="text-muted" style="font-size:0.78rem">Why the classifier picked each tier — see ModelRouter._classify</span>
             </div>
             <div class="table-wrapper">
               <table>
                 <thead>
                   <tr>
-                    <th>Category</th>
-                    <th>Assigned Model</th>
+                    <th>Reason</th>
+                    <th>Tier</th>
                     <th>Requests</th>
-                    <th>Accuracy</th>
                     <th>Avg Latency</th>
-                    <th>Avg Cost</th>
                   </tr>
                 </thead>
                 <tbody id="router-tbody"></tbody>
@@ -447,43 +436,39 @@
         </section>
 
         <!-- ════════════════════════════════════════════ -->
-        <!--  SETTINGS PAGE                              -->
+        <!--  THRESHOLD PAGE                             -->
         <!-- ════════════════════════════════════════════ -->
-        <section id="page-settings" class="page">
+        <section id="page-threshold" class="page">
           <div class="page-header">
-            <h2 class="page-title">Settings</h2>
-            <p class="page-subtitle">Configure your ContextForge proxy</p>
+            <h2 class="page-title">Adaptive Threshold</h2>
+            <p class="page-subtitle">The similarity score required for a cache hit auto-tunes from observed hit rates (see app/adaptive.py)</p>
           </div>
 
-          <div class="settings-grid">
-            <div class="settings-section">
-              <div class="settings-section-title">API Configuration</div>
-              <div class="form-group">
-                <label class="form-label" for="setting-api-url">API Base URL</label>
-                <input id="setting-api-url" class="input" type="text" placeholder="http://localhost:8000">
-              </div>
-              <div class="form-group">
-                <label class="form-label" for="setting-max-tokens">Max Tokens</label>
-                <input id="setting-max-tokens" class="input" type="number" placeholder="4096">
-              </div>
+          <div class="metrics-grid">
+            <div class="metric-card">
+              <div class="metric-icon purple">📐</div>
+              <div class="metric-label">Current Threshold</div>
+              <div class="metric-value" id="threshold-current">—</div>
             </div>
-
-            <div class="settings-section">
-              <div class="settings-section-title">Cache Settings</div>
-              <div class="form-group">
-                <label class="form-label" for="setting-cache-ttl">Default TTL (seconds)</label>
-                <input id="setting-cache-ttl" class="input" type="number" placeholder="3600">
-              </div>
-              <div class="form-group">
-                <label class="form-label" for="setting-similarity">Similarity Threshold</label>
-                <input id="setting-similarity" class="input" type="number" step="0.01" min="0" max="1" placeholder="0.92">
-              </div>
+            <div class="metric-card">
+              <div class="metric-icon blue">⚓</div>
+              <div class="metric-label">Static Baseline</div>
+              <div class="metric-value" id="threshold-baseline">—</div>
+            </div>
+            <div class="metric-card">
+              <div class="metric-icon orange">🕒</div>
+              <div class="metric-label">Last Evaluated</div>
+              <div class="metric-value" id="threshold-evaluated" style="font-size:1.1rem">—</div>
             </div>
           </div>
+
+          <p class="text-muted" style="font-size:0.8rem;margin:4px 0 20px">
+            Rule: hit rate above 60% raises the threshold by 0.01 (stricter matching); below 20% lowers it
+            (looser matching); otherwise no change. Runs automatically, or trigger it here.
+          </p>
 
           <div class="settings-actions">
-            <button id="btn-save-settings" class="btn btn-primary" data-action="save-settings">💾 Save Settings</button>
-            <button class="btn btn-secondary" data-action="reset-settings">↺ Reset Defaults</button>
+            <button id="btn-evaluate-threshold" class="btn btn-primary" data-action="evaluate-threshold">Evaluate Now</button>
           </div>
         </section>
 

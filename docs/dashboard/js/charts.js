@@ -125,20 +125,23 @@ function initModelsChart(data) {
 }
 
 // ─── SIMILARITY DISTRIBUTION (histogram-like bar) ────────────
-function initSimilarityChart(entries) {
+// `scores` is a plain array of similarity_score values (0-1) taken from
+// recent cache-hit requests — real numbers, not a per-entry cache dump
+// (the backend never exposes cached prompt text, so there's no "cache
+// entries" list to show — see docs/dashboard/README notes in the Cache page).
+function initSimilarityChart(scores) {
   _applyDefaults();
   const ctx = document.getElementById('chart-similarity');
   if (!ctx) return;
 
   // Bucketize
-  const buckets = { '0.90-0.92': 0, '0.92-0.94': 0, '0.94-0.96': 0, '0.96-0.98': 0, '0.98-1.00': 0 };
-  entries.forEach(e => {
-    const s = e.similarity;
-    if (s < 0.92) buckets['0.90-0.92']++;
-    else if (s < 0.94) buckets['0.92-0.94']++;
-    else if (s < 0.96) buckets['0.94-0.96']++;
-    else if (s < 0.98) buckets['0.96-0.98']++;
-    else buckets['0.98-1.00']++;
+  const buckets = { '0.70-0.80': 0, '0.80-0.90': 0, '0.90-0.94': 0, '0.94-0.97': 0, '0.97-1.00': 0 };
+  scores.forEach(s => {
+    if (s < 0.80) buckets['0.70-0.80']++;
+    else if (s < 0.90) buckets['0.80-0.90']++;
+    else if (s < 0.94) buckets['0.90-0.94']++;
+    else if (s < 0.97) buckets['0.94-0.97']++;
+    else buckets['0.97-1.00']++;
   });
 
   _charts.similarity = new Chart(ctx, {

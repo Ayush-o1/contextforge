@@ -259,3 +259,27 @@ class TestChatCompletionsWithRouter:
         assert call_kwargs[1].get("model_override") == "gpt-4o" or (
             len(call_kwargs[0]) > 1 and call_kwargs[0][1] == "gpt-4o"
         )
+
+    def test_routing_decision_persisted_to_telemetry(
+        self, test_client, mock_router, mock_proxy_client, mock_cache, chat_completion_fixture, sample_request_body
+    ):
+        """The routing tier and reason end up on the telemetry row, not just
+        the response headers — this is what lets the dashboard show a real
+        simple/complex breakdown instead of inventing one."""
+        from app.telemetry import get_records
+
+        mock_router.route.return_value = RoutingDecision(
+            tier=Tier.COMPLEX,
+            model_requested="gpt-3.5-turbo",
+            model_selected="gpt-4o",
+            reason="complex_keyword:analyze",
+            token_count=10,
+        )
+        mock_proxy_client.forward.return_value = chat_completion_fixture
+
+        resp = test_client.post("/v1/chat/completions", json=sample_request_body)
+        assert resp.status_code == 200
+
+        record = get_records(limit=1)[0]
+        assert record["tier"] == "complex"
+        assert record["routing_reason"] == "complex_keyword:analyze"

@@ -90,9 +90,8 @@ contextforge/
 ├── config/
 │   └── routing_rules.yaml   # Token thresholds, keywords, model-tier mappings
 ├── docs/
-│   ├── dashboard/           # Static HTML/CSS/JS telemetry dashboard
-│   │   └── index.html       # Open in browser; auto-connects to running backend
-│   └── assets/              # Screenshots
+│   └── dashboard/           # Static HTML/CSS/JS telemetry dashboard
+│       └── index.html       # Open in browser; auto-connects to running backend
 ├── tests/                   # pytest suite (no live API calls)
 │   ├── conftest.py          # Shared fixtures (mock Redis, FAISS)
 │   ├── test_proxy.py
@@ -111,9 +110,8 @@ contextforge/
 │   ├── benchmark_utils.py
 │   └── prompts_labeled.json # 1,000 labeled prompts for routing accuracy tests
 ├── .github/workflows/
-│   ├── ci.yml               # Lint + test on push/PR
-│   └── deploy.yml           # Railway deployment
-├── docker-compose.yml       # App + Redis
+│   └── ci.yml               # Lint + test on push/PR
+├── docker-compose.yml       # App + Redis (local dev only)
 ├── Dockerfile               # Multi-stage Python 3.11 image
 ├── requirements.txt
 ├── pyproject.toml           # ruff + pytest config
@@ -259,7 +257,7 @@ Full schema reference: [docs/API.md](docs/API.md)
 
 ## Dashboard
 
-Open `docs/dashboard/index.html` in your browser while the backend is running. It connects to `localhost:8000` and shows live telemetry: request counts, cache hit rate, model distribution, latency trends, and the full request log. Falls back to mock data when the backend is not running.
+Open `http://localhost:8000/dashboard/` (or `docs/dashboard/index.html` directly) while the backend is running. It shows real telemetry — request log, cache hit rate, model/tier distribution, latency trends — computed entirely from the actual `/v1/*` responses (no fabricated numbers). Falls back to a small labeled demo dataset if it can't reach a backend. Details: [docs/DASHBOARD.md](docs/DASHBOARD.md).
 
 ---
 
@@ -271,7 +269,7 @@ Open `docs/dashboard/index.html` in your browser while the backend is running. I
 # Lint
 ruff check app/ tests/ benchmarks/
 
-# Run all tests (168 tests, mocked — this is what CI runs)
+# Run all tests (mocked — this is what CI runs)
 PYTHONPATH=. pytest tests/ -v
 ```
 

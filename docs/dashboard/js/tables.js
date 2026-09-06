@@ -2,30 +2,42 @@
    CONTEXTFORGE DASHBOARD – TABLE RENDERING
    ============================================ */
 
+// ─── HTML ESCAPING ───────────────────────────────────────────
+// model/tier/routing_reason ultimately come from request data the *caller*
+// controls (the chat completions body, and — for model_used — the
+// X-ContextForge-Model-Override header), not from the dashboard's own
+// state. Every dynamic value gets escaped before going into innerHTML so a
+// request like {"model": "<img src=x onerror=alert(1)>"} shows up as inert
+// text in the log instead of running in whoever's viewing the dashboard.
+function escapeHtml(value) {
+  return String(value ?? '').replace(/[&<>"']/g, ch => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+  }[ch]));
+}
+
 // ─── PAGINATION STATE ────────────────────────────────────────
 let _currentPage = 1;
 const _pageSize = 10;
 let _searchTerm = '';
 let _filterModel = '';
 let _filterStatus = '';
+let _filterTier = '';
 
 // ─── FILTER ──────────────────────────────────────────────────
 function getFilteredRequests(requests) {
   return requests.filter(r => {
     const rid = r.id || r.request_id || '';
     const rmodel = r.model || r.model_used || '';
-    const endpoint = r.endpoint || '';
     const cacheHit = r.cacheHit != null ? r.cacheHit : r.cache_hit;
     const cacheStatus = r.cache_status || (cacheHit ? 'HIT' : 'MISS');
     if (_searchTerm) {
       const q = _searchTerm.toLowerCase();
-      const match = rid.toLowerCase().includes(q) ||
-                    rmodel.toLowerCase().includes(q) ||
-                    endpoint.toLowerCase().includes(q);
+      const match = rid.toLowerCase().includes(q) || rmodel.toLowerCase().includes(q);
       if (!match) return false;
     }
     if (_filterModel && rmodel !== _filterModel) return false;
     if (_filterStatus && cacheStatus !== _filterStatus) return false;
+    if (_filterTier && r.tier !== _filterTier) return false;
     return true;
   });
 }
@@ -43,7 +55,7 @@ function renderRequestsTable(requests) {
   if (!tbody) return;
 
   if (pageItems.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;padding:32px;color:var(--text-tertiary)">No requests match your filters</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;padding:32px;color:var(--text-tertiary)">No requests match your filters</td></tr>`;
   } else {
     tbody.innerHTML = pageItems.map(r => {
       const rid = r.id || r.request_id || '';
@@ -54,21 +66,20 @@ function renderRequestsTable(requests) {
       const cacheStatus = r.cache_status || (cacheHit ? 'HIT' : 'MISS');
       const tIn = r.tokens_in || r.prompt_tokens || 0;
       const tOut = r.tokens_out || r.completion_tokens || 0;
-      const tokens = r.tokens != null ? r.tokens : (tIn + tOut);
-      const endpoint = r.endpoint || '/v1/chat/completions';
       const sim = r.similarity_score != null ? r.similarity_score : (r.similarity || null);
       const latencyClass = lat < 500 ? 'latency-fast' : lat < 1500 ? 'latency-medium' : 'latency-slow';
       const pillClass = cacheHit ? 'hit' : 'miss';
       const simText = sim !== null && sim !== undefined ? (sim * 100).toFixed(0) + '%' : '—';
+      const tier = r.tier ? escapeHtml(r.tier) : '—';
 
       return `<tr>
         <td>
-          <span class="mono">${rid.slice(0, 12)}</span>
-          <button class="copy-btn" onclick="copyToClipboard('${rid}', this)" title="Copy ID">⧉</button>
+          <span class="mono">${escapeHtml(rid.slice(0, 12))}</span>
+          <button class="copy-btn" onclick="copyToClipboard('${escapeHtml(rid)}', this)" title="Copy ID">⧉</button>
         </td>
         <td>${timeAgo(r.timestamp)}</td>
-        <td>${rmodel}</td>
-        <td class="mono text-muted">${endpoint.split('/').pop()}</td>
+        <td>${escapeHtml(rmodel)}</td>
+        <td class="text-muted">${tier}</td>
         <td>${tIn.toLocaleString()} / ${tOut.toLocaleString()}</td>
         <td class="${latencyClass}">${formatLatency(lat)}</td>
         <td>${formatCost(rcost)}</td>
@@ -77,7 +88,6 @@ function renderRequestsTable(requests) {
     }).join('');
   }
 
-  // Pagination info
   const info = document.getElementById('page-info');
   if (info) {
     const end = Math.min(start + _pageSize, filtered.length);
@@ -86,7 +96,6 @@ function renderRequestsTable(requests) {
       : `${start + 1}–${end} of ${filtered.length}`;
   }
 
-  // Button states
   const prevBtn = document.getElementById('prev-page');
   const nextBtn = document.getElementById('next-page');
   if (prevBtn) prevBtn.disabled = _currentPage <= 1;
@@ -114,59 +123,84 @@ function resetFilters() {
   _searchTerm = '';
   _filterModel = '';
   _filterStatus = '';
+  _filterTier = '';
   _currentPage = 1;
   const searchEl = document.getElementById('req-search');
   const modelEl = document.getElementById('filter-model');
   const statusEl = document.getElementById('filter-status');
+  const tierEl = document.getElementById('tier-filter');
   if (searchEl) searchEl.value = '';
   if (modelEl) modelEl.value = '';
   if (statusEl) statusEl.value = '';
+  if (tierEl) tierEl.value = '';
 }
 
-// ─── CACHE TABLE ─────────────────────────────────────────────
-function renderCacheTable(entries) {
+// Populates the model filter from whatever models actually appear in the
+// data, instead of a hardcoded guess list that drifts from what's really
+// configured (see PREFERRED_PROVIDER / SIMPLE_MODEL / COMPLEX_MODEL).
+function populateModelFilter(requests) {
+  const select = document.getElementById('filter-model');
+  if (!select) return;
+  const models = [...new Set(requests.map(r => r.model || r.model_used).filter(Boolean))].sort();
+  const current = select.value;
+  select.innerHTML = '<option value="">All Models</option>' +
+    models.map(m => `<option value="${escapeHtml(m)}">${escapeHtml(m)}</option>`).join('');
+  if (models.includes(current)) select.value = current;
+}
+
+// ─── CACHE PAGE: RECENT HITS ─────────────────────────────────
+// The backend stores cached responses in Redis keyed by a content hash and
+// vectors in FAISS — never the original prompt text — so there's no
+// "cache entries" list with prompt previews to show honestly. This shows
+// the real per-request data that *is* available: which recent requests
+// were served from cache, and at what similarity.
+function renderCacheHitsTable(requests) {
   const tbody = document.getElementById('cache-tbody');
   if (!tbody) return;
 
-  tbody.innerHTML = entries.map(e => {
-    const ttlPct = Math.round((e.ttl_remaining / e.ttl_total) * 100);
-    const ttlMin = Math.round(e.ttl_remaining / 60);
-    const barColor = ttlPct > 50 ? 'var(--accent)' : ttlPct > 20 ? 'var(--warning)' : 'var(--error)';
+  const hits = requests.filter(r => (r.cacheHit != null ? r.cacheHit : r.cache_hit)).slice(0, 15);
 
+  if (hits.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;padding:32px;color:var(--text-tertiary)">No cache hits in the current window</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = hits.map(r => {
+    const rid = r.id || r.request_id || '';
+    const rmodel = r.model || r.model_used || '';
+    const sim = r.similarity_score != null ? r.similarity_score : r.similarity;
+    const simText = sim != null ? (sim * 100).toFixed(1) + '%' : '—';
     return `<tr>
-      <td class="mono">${e.key}</td>
-      <td style="max-width:220px;overflow:hidden;text-overflow:ellipsis" title="${e.prompt_preview}">${e.prompt_preview.slice(0, 50)}…</td>
-      <td>${e.model}</td>
-      <td>${(e.similarity * 100).toFixed(0)}%</td>
-      <td>${e.hits}</td>
-      <td>${e.size_kb.toFixed(1)} KB</td>
-      <td>
-        <div class="flex items-center gap-sm">
-          <div class="ttl-bar">
-            <div class="ttl-bar-fill" style="width:${ttlPct}%;background:${barColor}"></div>
-          </div>
-          <span class="text-muted" style="font-size:0.7rem">${ttlMin}m</span>
-        </div>
-      </td>
+      <td class="mono">${escapeHtml(rid.slice(0, 12))}</td>
+      <td>${escapeHtml(rmodel)}</td>
+      <td>${simText}</td>
+      <td>${timeAgo(r.timestamp)}</td>
+      <td>${formatCost(r.cost != null ? r.cost : (r.estimated_cost_usd || 0))} saved</td>
     </tr>`;
   }).join('');
 }
 
-// ─── ROUTER TABLE ────────────────────────────────────────────
-function renderRouterTable(categories) {
+// ─── ROUTER PAGE: TIER BREAKDOWN ─────────────────────────────
+// `rows` come from aggregateByReason() in app.js — real counts grouped by
+// the router's actual decision reason (e.g. "token_count:150<=200",
+// "complex_keyword:analyze"), not a fabricated topic taxonomy the router
+// has no way of actually knowing.
+function renderReasonTable(rows) {
   const tbody = document.getElementById('router-tbody');
   if (!tbody) return;
 
-  tbody.innerHTML = categories.map(c => {
-    const accColor = c.accuracy >= 95 ? 'var(--success)' : c.accuracy >= 90 ? 'var(--warning)' : 'var(--error)';
+  if (rows.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="4" style="text-align:center;padding:32px;color:var(--text-tertiary)">No requests yet</td></tr>`;
+    return;
+  }
 
+  tbody.innerHTML = rows.map(row => {
+    const tierClass = row.tier === 'complex' ? 'pill miss' : 'pill hit';
     return `<tr>
-      <td style="font-weight:500">${c.category}</td>
-      <td>${c.model_assigned}</td>
-      <td>${c.requests.toLocaleString()}</td>
-      <td style="color:${accColor};font-weight:600">${c.accuracy}%</td>
-      <td>${formatLatency(c.avg_latency_ms)}</td>
-      <td>${formatCost(c.avg_cost)}</td>
+      <td class="mono">${escapeHtml(row.reason)}</td>
+      <td><span class="${tierClass}">${escapeHtml(row.tier)}</span></td>
+      <td>${row.count.toLocaleString()}</td>
+      <td>${formatLatency(row.avgLatency)}</td>
     </tr>`;
   }).join('');
 }
@@ -188,9 +222,9 @@ function renderRecentRequestsTable(requests) {
     const pillClass = cacheHit ? 'hit' : 'miss';
 
     return `<tr>
-      <td class="mono">${rid.slice(0, 12)}</td>
+      <td class="mono">${escapeHtml(rid.slice(0, 12))}</td>
       <td>${timeAgo(r.timestamp)}</td>
-      <td>${rmodel}</td>
+      <td>${escapeHtml(rmodel)}</td>
       <td class="${latencyClass}">${formatLatency(lat)}</td>
       <td>${formatCost(rcost)}</td>
       <td><span class="pill ${pillClass}">${cacheStatus}</span></td>

@@ -1,4 +1,5 @@
-# Phase 1 implementation
+"""Per-request telemetry middleware — writes one row per /v1/chat/* call."""
+
 import time
 import uuid
 from datetime import datetime, timezone
@@ -7,7 +8,7 @@ from fastapi import Request
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from app import telemetry
-from app.costs import estimate_cost  # see below
+from app.costs import estimate_cost
 
 
 class TelemetryMiddleware(BaseHTTPMiddleware):
@@ -30,6 +31,8 @@ class TelemetryMiddleware(BaseHTTPMiddleware):
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "model_requested": getattr(state, "model_requested", None),
             "model_used": getattr(state, "model_used", None),
+            "tier": getattr(state, "tier", None),
+            "routing_reason": getattr(state, "routing_reason", None),
             "cache_hit": getattr(state, "cache_hit", False),
             "similarity_score": getattr(state, "similarity_score", None),
             "prompt_tokens": getattr(state, "prompt_tokens", 0),

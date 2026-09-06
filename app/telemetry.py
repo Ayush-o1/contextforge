@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import dataclasses
-import datetime
 import sqlite3
 import threading
 from contextlib import contextmanager
@@ -33,6 +31,8 @@ def init_db() -> None:
                 timestamp DATETIME,
                 model_requested TEXT,
                 model_used TEXT,
+                tier TEXT,
+                routing_reason TEXT,
                 cache_hit BOOLEAN,
                 similarity_score REAL,
                 prompt_tokens INTEGER,
@@ -44,6 +44,10 @@ def init_db() -> None:
             )
         """)
         conn.execute("PRAGMA journal_mode=WAL")
+        # Powers ORDER BY timestamp DESC in get_records() and the dashboard's
+        # time-range filtering — without it, every telemetry page/filter does
+        # a full table scan.
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_telemetry_timestamp ON telemetry(timestamp)")
     # Also ensure the Phase-3 request_log table exists
     init_request_log()
 
@@ -68,14 +72,14 @@ def write_record(record: dict[str, Any]) -> None:
             with get_conn() as conn:
                 conn.execute("""
                     INSERT OR IGNORE INTO telemetry
-                    (request_id, timestamp, model_requested, model_used, cache_hit,
-                     similarity_score, prompt_tokens, completion_tokens,
+                    (request_id, timestamp, model_requested, model_used, tier, routing_reason,
+                     cache_hit, similarity_score, prompt_tokens, completion_tokens,
                      estimated_cost_usd, latency_ms, compressed, compression_ratio)
                     VALUES
-                    (:request_id, :timestamp, :model_requested, :model_used, :cache_hit,
-                     :similarity_score, :prompt_tokens, :completion_tokens,
+                    (:request_id, :timestamp, :model_requested, :model_used, :tier, :routing_reason,
+                     :cache_hit, :similarity_score, :prompt_tokens, :completion_tokens,
                      :estimated_cost_usd, :latency_ms, :compressed, :compression_ratio)
-                """, record)
+                """, {"tier": None, "routing_reason": None, **record})
         except Exception:
             pass
 
@@ -114,49 +118,6 @@ def get_summary() -> dict[str, Any]:
     summary["cache_hit_rate"] = round((summary["cache_hits"] or 0) / total, 4)
     summary["p95_latency_ms"] = p95_row["latency_ms"] if p95_row else None
     return summary
-
-
-# ─── OOP wrappers ─────────────────────────────────────────────────────────
-
-
-@dataclasses.dataclass
-class TelemetryRecord:
-    """Structured telemetry record that converts to a dict for write_record."""
-
-    request_id: str
-    timestamp: datetime.datetime
-    model_requested: str
-    model_used: str
-    cache_hit: bool
-    similarity_score: float
-    prompt_tokens: int
-    completion_tokens: int
-    estimated_cost_usd: float
-    latency_ms: float
-    compressed: bool
-    compression_ratio: float
-
-    def to_dict(self) -> dict[str, Any]:
-        return dataclasses.asdict(self)
-
-
-class TelemetryDB:
-    """OOP wrapper around the module-level telemetry functions."""
-
-    def init_db(self) -> None:
-        init_db()
-
-    def write(self, record: TelemetryRecord | dict[str, Any]) -> None:
-        if isinstance(record, TelemetryRecord):
-            write_record(record.to_dict())
-        else:
-            write_record(record)
-
-    def get_recent(self, limit: int = 50, offset: int = 0) -> list[dict]:
-        return get_records(limit, offset)
-
-    def get_summary(self) -> dict[str, Any]:
-        return get_summary()
 
 
 # ═══════════════════════════════════════════════════════════════════════════
