@@ -10,6 +10,7 @@ import numpy as np
 import pytest
 from fastapi.testclient import TestClient
 
+from app import telemetry as tel
 from app.cache import CacheResult, SemanticCache
 from app.config import Settings
 from app.main import app
@@ -17,6 +18,22 @@ from app.proxy import ProxyClient
 from app.router import ModelRouter, RoutingDecision, Tier
 
 FIXTURES_DIR = Path(__file__).parent.parent / "fixtures" / "openai_responses"
+
+
+@pytest.fixture(autouse=True, scope="session")
+def _init_telemetry_db() -> None:
+    """Ensure the telemetry/request_log tables exist before any test runs.
+
+    In production this happens once in app.main's lifespan before the app
+    serves its first request. Tests using `test_client` skip lifespan
+    entirely (deps are mocked directly onto app.state instead), so any
+    test that exercises a real telemetry.py read path — e.g. GET
+    /v1/telemetry — would otherwise depend on test order happening to run
+    test_telemetry.py (which calls init_db() itself) first. That's an
+    accidental dependency, not a designed one: a fresh checkout with no
+    such ordering luck hits `sqlite3.OperationalError: no such table`.
+    """
+    tel.init_db()
 
 
 @pytest.fixture
