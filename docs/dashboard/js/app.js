@@ -1,63 +1,64 @@
 /* ============================================
-   CONTEXTFORGE DASHBOARD – APP CONTROLLER
+   ContextForge — app controller
    ============================================ */
 
 let _appData = null;
 let _currentPageId = 'overview';
 let _currentTimeRange = '7d';
+let _connected = false;
 
-// ─── PAGE NAVIGATION ─────────────────────────────────────────
+const PAGE_TITLES = {
+  overview: 'Overview',
+  requests: 'Requests',
+  cache: 'Cache',
+  router: 'Router',
+  telemetry: 'Telemetry',
+  threshold: 'Threshold',
+};
+
+// ─── NAVIGATION ──────────────────────────────────────────────
 function navigateTo(pageId) {
-  document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(el => {
+    const active = el.dataset.page === pageId;
+    el.classList.toggle('active', active);
+    if (active) el.setAttribute('aria-current', 'page');
+    else el.removeAttribute('aria-current');
+  });
+
   document.querySelectorAll('.page').forEach(el => el.classList.remove('active'));
+  document.getElementById(`page-${pageId}`)?.classList.add('active');
 
-  const navItem = document.querySelector(`.nav-item[data-page="${pageId}"]`);
-  if (navItem) navItem.classList.add('active');
-
-  const page = document.getElementById(`page-${pageId}`);
-  if (page) page.classList.add('active');
-
-  const titles = {
-    overview: 'Overview',
-    requests: 'Request Log',
-    cache: 'Cache Manager',
-    router: 'Smart Router',
-    telemetry: 'Telemetry',
-    threshold: 'Adaptive Threshold',
-  };
   const headerTitle = document.getElementById('header-title');
-  if (headerTitle) headerTitle.textContent = titles[pageId] || pageId;
+  if (headerTitle) headerTitle.textContent = PAGE_TITLES[pageId] || pageId;
+  document.title = `${PAGE_TITLES[pageId] || pageId} · ContextForge`;
 
   _currentPageId = pageId;
 
-  if (window.innerWidth <= 1024) {
-    const sidebar = document.getElementById('sidebar');
-    const overlay = document.getElementById('mobile-overlay');
-    sidebar.classList.remove('mobile-open');
-    overlay.classList.remove('active');
-  }
+  if (window.innerWidth <= 1024) closeMobileSidebar();
 
   destroyAllCharts();
 
-  if (_appData) {
-    switch (pageId) {
-      case 'overview': initOverviewPage(_appData); break;
-      case 'requests': initRequestsPage(_appData); break;
-      case 'cache': initCachePage(_appData); break;
-      case 'router': initRouterPage(_appData); break;
-      case 'telemetry': initTelemetryPage(_appData); break;
-      case 'threshold': initThresholdPage(); break;
-    }
+  if (!_appData) return;
+  switch (pageId) {
+    case 'overview': initOverviewPage(_appData); break;
+    case 'requests': initRequestsPage(_appData); break;
+    case 'cache': initCachePage(_appData); break;
+    case 'router': initRouterPage(_appData); break;
+    case 'telemetry': initTelemetryPage(_appData); break;
+    case 'threshold': initThresholdPage(); break;
   }
 }
 
 // ─── AGGREGATION ─────────────────────────────────────────────
-// These run identically over real API records and the demo dataset in
-// data.js — one code path, so the demo view can never show something the
-// real dashboard couldn't also compute.
+// These run identically over live API records and the demo dataset in
+// data.js, so there is one code path for turning a list of requests into
+// charts — the demo view can't drift from what the real one would show.
 
 function getTimeRangeCutoff(range) {
-  const spans = { '1h': 3600e3, '6h': 6 * 3600e3, '24h': 24 * 3600e3, '7d': 7 * 24 * 3600e3, '30d': 30 * 24 * 3600e3 };
+  const spans = {
+    '1h': 3600e3, '6h': 6 * 3600e3, '24h': 24 * 3600e3,
+    '7d': 7 * 24 * 3600e3, '30d': 30 * 24 * 3600e3,
+  };
   return Date.now() - (spans[range] || spans['7d']);
 }
 
@@ -66,23 +67,22 @@ function filterByTimeRange(requests, range) {
   return requests.filter(r => new Date(r.timestamp).getTime() >= cutoff);
 }
 
-// Groups requests by calendar day for the trend charts. Only produces days
-// that actually have data — with a fixed fetch limit, a quiet dashboard
-// won't pretend to have 14 days of history it doesn't have.
+// Only produces days that actually have data, so a quiet dashboard
+// doesn't imply a fortnight of history it never had.
 function aggregateByDay(requests) {
   const byDay = new Map();
   for (const r of requests) {
     const day = (r.timestamp || '').slice(0, 10);
     if (!day) continue;
     if (!byDay.has(day)) {
-      byDay.set(day, { date: day, total_requests: 0, cache_hits: 0, cache_misses: 0, _latencySum: 0, total_cost: 0 });
+      byDay.set(day, { date: day, total_requests: 0, cache_hits: 0, cache_misses: 0, _latency: 0, total_cost: 0 });
     }
-    const bucket = byDay.get(day);
+    const b = byDay.get(day);
     const hit = r.cacheHit != null ? r.cacheHit : r.cache_hit;
-    bucket.total_requests += 1;
-    if (hit) bucket.cache_hits += 1; else bucket.cache_misses += 1;
-    bucket._latencySum += r.latency != null ? r.latency : (r.latency_ms || 0);
-    bucket.total_cost += r.cost != null ? r.cost : (r.estimated_cost_usd || 0);
+    b.total_requests += 1;
+    if (hit) b.cache_hits += 1; else b.cache_misses += 1;
+    b._latency += r.latency != null ? r.latency : (r.latency_ms || 0);
+    b.total_cost += r.cost != null ? r.cost : (r.estimated_cost_usd || 0);
   }
   return [...byDay.values()]
     .sort((a, b) => a.date.localeCompare(b.date))
@@ -91,118 +91,105 @@ function aggregateByDay(requests) {
       total_requests: b.total_requests,
       cache_hits: b.cache_hits,
       cache_misses: b.cache_misses,
-      avg_latency_ms: b.total_requests ? Math.round(b._latencySum / b.total_requests) : 0,
-      total_cost: +b.total_cost.toFixed(4),
+      avg_latency_ms: b.total_requests ? Math.round(b._latency / b.total_requests) : 0,
+      total_cost: +b.total_cost.toFixed(6),
     }));
 }
 
-// Groups requests by the router's actual decision reason (see
-// app/router.py's _classify) rather than an invented topic taxonomy.
 function aggregateByReason(requests) {
   const byReason = new Map();
   for (const r of requests) {
-    const reason = r.routing_reason || r.routingReason;
+    const reason = r.routing_reason;
     if (!reason) continue;
     if (!byReason.has(reason)) {
-      byReason.set(reason, { reason, tier: r.tier || 'unknown', count: 0, _latencySum: 0 });
+      byReason.set(reason, { reason, tier: r.tier || 'unknown', count: 0, _latency: 0 });
     }
-    const bucket = byReason.get(reason);
-    bucket.count += 1;
-    bucket._latencySum += r.latency != null ? r.latency : (r.latency_ms || 0);
+    const b = byReason.get(reason);
+    b.count += 1;
+    b._latency += r.latency != null ? r.latency : (r.latency_ms || 0);
   }
   return [...byReason.values()]
-    .map(b => ({ ...b, avgLatency: Math.round(b._latencySum / b.count) }))
+    .map(b => ({ ...b, avgLatency: Math.round(b._latency / b.count) }))
     .sort((a, b) => b.count - a.count);
 }
 
 function tierCounts(requests) {
-  const simple = requests.filter(r => r.tier === 'simple').length;
-  const complex = requests.filter(r => r.tier === 'complex').length;
-  return { simple, complex };
+  return {
+    simple: requests.filter(r => r.tier === 'simple').length,
+    complex: requests.filter(r => r.tier === 'complex').length,
+  };
 }
 
 function similarityScoresFromHits(requests) {
   return requests
     .filter(r => (r.cacheHit != null ? r.cacheHit : r.cache_hit))
-    .map(r => r.similarity_score != null ? r.similarity_score : r.similarity)
+    .map(r => (r.similarity_score != null ? r.similarity_score : r.similarity))
     .filter(s => s != null);
 }
 
-// ─── PAGE INITIALIZERS ───────────────────────────────────────
+// ─── PAGES ───────────────────────────────────────────────────
+// "Nothing here yet" and "nothing in the last hour" are different
+// situations and deserve different wording.
+function emptyReason(data) {
+  return data.requests.length === 0
+    ? 'No requests yet — send one through /v1/chat/completions.'
+    : 'No requests in this time range.';
+}
+
 function initOverviewPage(data) {
   const inRange = filterByTimeRange(data.requests, _currentTimeRange);
+  const s = data.summary;
 
-  _setCountUp('metric-total-requests', data.summary.total_requests, '', 0);
-  _setCountUp('metric-hit-rate', data.summary.cache_hit_rate, '%', 1);
-  _setCountUp('metric-avg-latency', data.summary.avg_latency_ms, 'ms', 0);
-  _setCountUp('metric-total-cost', data.summary.total_cost, '', 2, '$');
+  setText('metric-total-requests', s.total_requests.toLocaleString());
+  setText('metric-hit-rate', formatPercent(s.cache_hit_rate));
+  setText('metric-avg-latency', formatLatency(s.avg_latency_ms));
+  setText('metric-total-cost', formatCost(s.total_cost));
 
-  animateCardsIn('.metric-card', 80);
-
-  initRequestsChart(aggregateByDay(inRange));
-  initModelsChart(inRange);
-
+  const empty = emptyReason(data);
+  initRequestsChart(aggregateByDay(inRange), empty);
+  initModelsChart(inRange, empty);
   renderRecentRequestsTable(data.requests);
 }
 
 function initRequestsPage(data) {
-  resetFilters();
   populateModelFilter(data.requests);
   renderRequestsTable(data.requests);
 }
 
 function initCachePage(data) {
-  const hitScores = similarityScoresFromHits(data.requests);
-  const avgSim = hitScores.length ? hitScores.reduce((a, b) => a + b, 0) / hitScores.length : 0;
+  const scores = similarityScoresFromHits(data.requests);
+  const avg = scores.length ? scores.reduce((a, b) => a + b, 0) / scores.length : 0;
+  const c = data.cacheStats;
 
-  _setText('cache-total-entries', data.cacheStats.total_vectors.toLocaleString());
-  _setText('cache-redis-keys', data.cacheStats.redis_keys.toLocaleString());
-  _setText('cache-hit-rate', data.summary.cache_hit_rate.toFixed(1) + '%');
-  _setText('cache-avg-sim', hitScores.length ? (avgSim * 100).toFixed(0) + '%' : '—');
-  _setText('cache-threshold', (data.cacheStats.similarity_threshold * 100).toFixed(0) + '%');
+  setText('cache-total-entries', (c.total_vectors ?? 0).toLocaleString());
+  setText('cache-redis-keys', (c.redis_keys ?? 0).toLocaleString());
+  setText('cache-hit-rate', formatPercent(data.summary.cache_hit_rate));
+  setText('cache-threshold', `${((c.similarity_threshold ?? 0) * 100).toFixed(0)}%`);
+  setText('cache-avg-sim', scores.length ? `${(avg * 100).toFixed(1)}%` : '—');
 
-  animateCardsIn('.metric-card', 80);
-
-  initSimilarityChart(hitScores);
+  initSimilarityChart(scores);
   renderCacheHitsTable(data.requests);
 }
 
 function initRouterPage(data) {
   const { simple, complex } = tierCounts(data.requests);
   const total = simple + complex;
-  const complexPct = total ? (complex / total) * 100 : 0;
 
-  _drawAccuracyRing(complexPct);
-  _setText('router-total-requests', total.toLocaleString());
-  _setText('router-simple-count', simple.toLocaleString());
-  _setText('router-complex-count', complex.toLocaleString());
+  drawRing(total ? (complex / total) * 100 : 0);
+  setText('router-total-requests', total.toLocaleString());
+  setText('router-simple-count', simple.toLocaleString());
+  setText('router-complex-count', complex.toLocaleString());
 
-  const rCtx = document.getElementById('router-models-chart');
-  if (rCtx) {
-    _charts.routerModels = new Chart(rCtx, {
-      type: 'doughnut',
-      data: {
-        labels: ['Simple', 'Complex'],
-        datasets: [{ data: [simple, complex], backgroundColor: [PALETTE[3], PALETTE[5]], borderWidth: 0, hoverOffset: 6 }],
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        cutout: '68%',
-        plugins: { legend: { position: 'bottom', labels: { padding: 12 } } },
-      },
-    });
-  }
-
+  initTierChart(simple, complex);
   renderReasonTable(aggregateByReason(data.requests));
 }
 
 function initTelemetryPage(data) {
-  const inRange = filterByTimeRange(data.requests, _currentTimeRange);
-  const daily = aggregateByDay(inRange);
-  initCostChart(daily);
-  initLatencyChart(daily);
-  initHitRateChart(daily);
+  const daily = aggregateByDay(filterByTimeRange(data.requests, _currentTimeRange));
+  const empty = emptyReason(data);
+  initCostChart(daily, empty);
+  initLatencyChart(daily, empty);
+  initHitRateChart(daily, empty);
 }
 
 function initThresholdPage() {
@@ -210,112 +197,171 @@ function initThresholdPage() {
 }
 
 async function loadThresholdInfo() {
-  const base = getApiBaseUrl();
-  const headers = getApiHeaders();
+  if (!_connected) {
+    setText('threshold-current', '—');
+    setText('threshold-baseline', '—');
+    setText('threshold-evaluated', 'Backend offline');
+    renderThresholdHistory([]);
+    return;
+  }
   try {
-    const resp = await fetch(`${base}/v1/threshold`, { headers });
-    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-    const data = await resp.json();
-    _setText('threshold-current', (data.current_threshold * 100).toFixed(1) + '%');
-    _setText('threshold-baseline', (data.baseline * 100).toFixed(1) + '%');
-    _setText('threshold-evaluated', data.last_evaluated_at ? timeAgo(data.last_evaluated_at) : 'Never');
+    const [infoRes, histRes] = await Promise.all([
+      apiFetch('/v1/threshold'),
+      apiFetch('/v1/threshold/history?limit=20'),
+    ]);
+    const info = await infoRes.json();
+    const hist = await histRes.json();
+
+    setText('threshold-current', `${(info.current_threshold * 100).toFixed(1)}%`);
+    setText('threshold-baseline', `${(info.baseline * 100).toFixed(1)}%`);
+    setText('threshold-evaluated', info.last_evaluated_at ? timeAgo(info.last_evaluated_at) : 'Never');
+    renderThresholdHistory(hist.records || []);
   } catch {
-    _setText('threshold-current', '—');
-    _setText('threshold-baseline', '—');
-    _setText('threshold-evaluated', 'Unavailable — backend not reachable');
+    setText('threshold-current', '—');
+    setText('threshold-baseline', '—');
+    setText('threshold-evaluated', 'Unavailable');
+    renderThresholdHistory([]);
   }
 }
 
+// ─── ACTIONS ─────────────────────────────────────────────────
 async function handleEvaluateThreshold() {
   const btn = document.getElementById('btn-evaluate-threshold');
   if (!btn) return;
-  setButtonLoading(btn, 'Evaluating...');
-  try {
-    const base = getApiBaseUrl();
-    const headers = getApiHeaders();
-    const resp = await fetch(`${base}/v1/threshold/evaluate`, { method: 'POST', headers });
-    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-    const data = await resp.json();
-    setButtonSuccess(btn, 'Evaluated');
-    showToast(`New threshold: ${(data.threshold * 100).toFixed(1)}% (hit rate: ${(data.cache_hit_rate * 100).toFixed(1)}%)`, 'success');
-    await loadThresholdInfo();
-  } catch (err) {
-    resetButton(btn, 'Evaluate Now');
-    showToast('Evaluation failed — is the backend running?', 'error');
+
+  if (!_connected) {
+    showToast("Can't run an evaluation while the backend is unreachable", 'error');
     return;
   }
-  setTimeout(() => resetButton(btn, 'Evaluate Now'), 1500);
+
+  setButtonLoading(btn, 'Running…');
+  try {
+    const resp = await apiFetch('/v1/threshold/evaluate', { method: 'POST' });
+    const data = await resp.json();
+    showToast(
+      `Threshold is now ${(data.threshold * 100).toFixed(1)}% — hit rate was ${(data.cache_hit_rate * 100).toFixed(1)}%`,
+      'success',
+    );
+    await loadThresholdInfo();
+  } catch {
+    showToast("Evaluation failed — the backend didn't respond", 'error');
+  } finally {
+    resetButton(btn);
+  }
 }
 
-// ─── BUTTON ACTIONS ──────────────────────────────────────────
 function handleClearCache() {
+  if (!_connected) {
+    showToast("Can't clear the cache while the backend is unreachable", 'error');
+    return;
+  }
   showModal('confirm-modal');
+
   const confirmBtn = document.getElementById('confirm-action');
   if (!confirmBtn) return;
   confirmBtn.onclick = async () => {
-    hideModal('confirm-modal');
+    setButtonLoading(confirmBtn, 'Clearing…');
     try {
-      const base = getApiBaseUrl();
-      const headers = getApiHeaders();
-      const resp = await fetch(`${base}/v1/cache`, { method: 'DELETE', headers });
-      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const resp = await apiFetch('/v1/cache', { method: 'DELETE' });
       const data = await resp.json();
-      showToast(`Cache cleared — ${data.vectors_cleared} vectors, ${data.redis_keys_cleared} Redis keys removed`, 'success');
+      hideModal('confirm-modal');
+      showToast(
+        `Cache cleared — ${data.vectors_cleared} vector${data.vectors_cleared === 1 ? '' : 's'} and ${data.redis_keys_cleared} stored response${data.redis_keys_cleared === 1 ? '' : 's'} removed`,
+        'success',
+      );
       await loadData();
       navigateTo(_currentPageId);
     } catch {
-      showToast('Failed to clear cache — is the backend running?', 'error');
+      hideModal('confirm-modal');
+      showToast("Couldn't clear the cache — the backend didn't respond", 'error');
+    } finally {
+      resetButton(confirmBtn);
     }
   };
 }
 
 function handleExportCSV() {
   if (!_appData) return;
-  const filtered = getFilteredRequests(_appData.requests);
-  const headers = ['ID', 'Timestamp', 'Model', 'Tier', 'Tokens In', 'Tokens Out', 'Latency (ms)', 'Cost', 'Cache Status', 'Similarity'];
-  const rows = filtered.map(r => [
-    r.id, r.timestamp, r.model, r.tier || '',
-    r.tokens_in, r.tokens_out, r.latency_ms,
-    r.cost, r.cache_status, r.similarity_score || '',
-  ]);
+  const rows = getFilteredRequests(_appData.requests);
+  if (!rows.length) {
+    showToast('Nothing to export with the current filters', 'info');
+    return;
+  }
 
-  const csv = [headers, ...rows].map(row => row.join(',')).join('\n');
-  const blob = new Blob([csv], { type: 'text/csv' });
-  const url = URL.createObjectURL(blob);
+  const headers = ['Request ID', 'Timestamp', 'Model', 'Tier', 'Routing reason',
+                   'Prompt tokens', 'Completion tokens', 'Latency (ms)', 'Cost (USD)', 'Cache', 'Similarity'];
+  const esc = v => {
+    const s = String(v ?? '');
+    return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+  const body = rows.map(r => [
+    r.id, r.timestamp, r.model, r.tier || '', r.routing_reason || '',
+    r.tokens_in, r.tokens_out, r.latency_ms, r.cost, r.cache_status, r.similarity_score ?? '',
+  ].map(esc).join(','));
+
+  const csv = [headers.join(','), ...body].join('\n');
+  const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
   const a = document.createElement('a');
   a.href = url;
-  a.download = `contextforge-requests-${new Date().toISOString().split('T')[0]}.csv`;
+  a.download = `contextforge-requests-${new Date().toISOString().slice(0, 10)}.csv`;
   a.click();
   URL.revokeObjectURL(url);
 
-  showToast(`Exported ${filtered.length} requests to CSV`, 'success');
+  showToast(`Exported ${rows.length} request${rows.length === 1 ? '' : 's'}`, 'success');
 }
 
 function handleTimeRange(range) {
   _currentTimeRange = range;
-  document.querySelectorAll('.time-range-btn').forEach(b => b.classList.remove('active'));
-  const btn = document.querySelector(`.time-range-btn[data-range="${range}"]`);
-  if (btn) btn.classList.add('active');
+  document.querySelectorAll('.time-range-btn').forEach(b => {
+    const active = b.dataset.range === range;
+    b.classList.toggle('active', active);
+    b.setAttribute('aria-pressed', String(active));
+  });
   if (_appData && (_currentPageId === 'overview' || _currentPageId === 'telemetry')) {
     navigateTo(_currentPageId);
   }
 }
 
-// ─── API NORMALIZATION ───────────────────────────────────────
-// API: http://localhost:8000/health, /v1/telemetry, /v1/telemetry/summary, /v1/cache/stats
-function _normalizeApiRecord(r) {
+// ─── API ─────────────────────────────────────────────────────
+function getApiBaseUrl() {
+  // Served from the app at /dashboard/ → same origin. Opened as a file
+  // → assume the default local port.
+  if (window.location.pathname.startsWith('/dashboard')) return window.location.origin;
+  return 'http://localhost:8000';
+}
+
+// Only needed when the backend has CONTEXTFORGE_API_KEYS set (auth is off
+// by default). Set one from the console:
+//   localStorage.setItem('contextforge_api_key', 'your-token')
+function getApiHeaders() {
+  let token = null;
+  try { token = localStorage.getItem('contextforge_api_key'); } catch { token = null; }
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
+async function apiFetch(path, options = {}) {
+  const resp = await fetch(`${getApiBaseUrl()}${path}`, {
+    ...options,
+    headers: { ...getApiHeaders(), ...(options.headers || {}) },
+  });
+  if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+  return resp;
+}
+
+function normalizeApiRecord(r) {
   return {
     id: r.request_id, request_id: r.request_id, timestamp: r.timestamp,
     model: r.model_used || r.model_requested, model_used: r.model_used,
     tokens_in: r.prompt_tokens || 0, tokens_out: r.completion_tokens || 0,
     latency_ms: r.latency_ms || 0, cost: r.estimated_cost_usd || 0,
     cache_status: r.cache_hit ? 'HIT' : 'MISS', cache_hit: !!r.cache_hit,
-    similarity_score: r.similarity_score, compressed: r.compressed || false,
-    compression_ratio: r.compression_ratio || 1.0,
+    similarity_score: r.similarity_score,
+    compressed: r.compressed || false, compression_ratio: r.compression_ratio || 1.0,
     tier: r.tier || null, routing_reason: r.routing_reason || null,
   };
 }
-function _normalizeApiSummary(s) {
+
+function normalizeApiSummary(s) {
   return {
     total_requests: s.total_requests || 0,
     cache_hit_rate: s.cache_hit_rate != null ? +(s.cache_hit_rate * 100).toFixed(1) : 0,
@@ -325,146 +371,95 @@ function _normalizeApiSummary(s) {
   };
 }
 
-// ─── DATA LOADING ────────────────────────────────────────────
 async function loadData() {
-  let connected = false;
-
   try {
-    connected = await checkAPIConnection();
+    _connected = await checkAPIConnection();
   } catch {
-    connected = false;
+    _connected = false;
   }
+  updateConnectionStatus(_connected);
 
-  updateConnectionStatus(connected);
-
-  if (connected) {
+  if (_connected) {
     try {
-      const base = getApiBaseUrl();
-      const headers = getApiHeaders();
       const [summaryRes, requestsRes, cacheRes] = await Promise.all([
-        fetch(`${base}/v1/telemetry/summary`, { headers }),
-        fetch(`${base}/v1/telemetry?limit=500`, { headers }),
-        fetch(`${base}/v1/cache/stats`, { headers }),
+        apiFetch('/v1/telemetry/summary'),
+        apiFetch('/v1/telemetry?limit=500'),
+        apiFetch('/v1/cache/stats'),
       ]);
-      if (!summaryRes.ok || !requestsRes.ok || !cacheRes.ok) throw new Error('API request failed');
-      const summary = await summaryRes.json();
-      const requests = await requestsRes.json();
-      const cacheData = await cacheRes.json();
+      const [summary, requests, cacheStats] = await Promise.all([
+        summaryRes.json(), requestsRes.json(), cacheRes.json(),
+      ]);
 
       _appData = {
-        summary: _normalizeApiSummary(summary),
-        requests: (requests.records || []).map(_normalizeApiRecord),
-        cacheStats: cacheData,
+        summary: normalizeApiSummary(summary),
+        requests: (requests.records || []).map(normalizeApiRecord),
+        cacheStats,
       };
+      return;
     } catch {
+      // Reachable but not answering properly — say so rather than
+      // quietly swapping in demo numbers that look real.
+      _connected = false;
       updateConnectionStatus(false);
-      _useMockData();
+      showToast("Backend reachable but didn't return data — showing demo data", 'warning');
     }
-  } else {
-    _useMockData();
   }
+  useDemoData();
 }
 
-function _useMockData() {
+function useDemoData() {
   _appData = {
-    summary: MOCK_SUMMARY,
-    requests: MOCK_REQUESTS,
-    cacheStats: MOCK_CACHE_STATS,
+    summary: DEMO_SUMMARY,
+    requests: DEMO_REQUESTS,
+    cacheStats: DEMO_CACHE_STATS,
   };
 }
 
 // ─── HELPERS ─────────────────────────────────────────────────
-function _setCountUp(id, value, suffix, decimals, prefix) {
-  const el = document.getElementById(id);
-  if (!el) return;
-  if (prefix) {
-    const span = el;
-    animateCountUp({
-      set textContent(v) { span.textContent = prefix + v; }
-    }, value, suffix, decimals);
-    return;
-  }
-  animateCountUp(el, value, suffix, decimals);
-}
-
-function _setText(id, text) {
+function setText(id, text) {
   const el = document.getElementById(id);
   if (el) el.textContent = text;
 }
 
-function _drawAccuracyRing(pct) {
+function drawRing(pct) {
   const circle = document.getElementById('accuracy-ring-fill');
   const label = document.getElementById('accuracy-ring-label');
   if (!circle) return;
 
-  const radius = 54;
-  const circumference = 2 * Math.PI * radius;
-  circle.style.strokeDasharray = circumference;
-  circle.style.strokeDashoffset = circumference;
-  requestAnimationFrame(() => {
-    circle.style.strokeDashoffset = circumference - (pct / 100) * circumference;
-  });
-
-  if (label) label.textContent = pct.toFixed(0) + '%';
+  const circumference = 2 * Math.PI * 56;
+  circle.style.strokeDasharray = String(circumference);
+  circle.style.strokeDashoffset = String(circumference - (pct / 100) * circumference);
+  if (label) label.textContent = `${Math.round(pct)}%`;
 }
 
 // ─── LIVE REFRESH ────────────────────────────────────────────
-let _liveRefreshEnabled = false;
-let _liveRefreshInterval = null;
-const REFRESH_INTERVAL_MS = 10000;
+let _liveTimer = null;
+const REFRESH_MS = 10000;
 
 function toggleLiveRefresh() {
-  _liveRefreshEnabled = !_liveRefreshEnabled;
   const btn = document.getElementById('live-refresh-btn');
-  if (btn) btn.classList.toggle('active', _liveRefreshEnabled);
+  const on = !_liveTimer;
 
-  if (_liveRefreshEnabled) {
-    showToast('Live refresh enabled (10s)', 'success', 2000);
-    _liveRefreshInterval = setInterval(async () => {
+  if (on) {
+    _liveTimer = setInterval(async () => {
       await loadData();
-      if (_appData && _currentPageId) navigateTo(_currentPageId);
-    }, REFRESH_INTERVAL_MS);
+      navigateTo(_currentPageId);
+    }, REFRESH_MS);
+    showToast('Refreshing every 10 seconds', 'info', 2500);
   } else {
-    showToast('Live refresh disabled', 'info', 2000);
-    if (_liveRefreshInterval) {
-      clearInterval(_liveRefreshInterval);
-      _liveRefreshInterval = null;
-    }
+    clearInterval(_liveTimer);
+    _liveTimer = null;
+    showToast('Auto-refresh off', 'info', 2000);
   }
+
+  btn?.classList.toggle('active', on);
+  btn?.setAttribute('aria-pressed', String(on));
 }
 
-// ─── DYNAMIC API BASE URL ────────────────────────────────────
-function getApiBaseUrl() {
-  // When served by FastAPI at /dashboard, use relative URLs
-  // When opened standalone, default to localhost:8000
-  if (window.location.pathname.startsWith('/dashboard')) {
-    return window.location.origin;
-  }
-  return 'http://localhost:8000';
-}
-
-// ─── API AUTH HEADERS ─────────────────────────────────────────
-// Only needed if the backend has CONTEXTFORGE_API_KEYS set (auth is off by
-// default). Set a token once via the browser console:
-//   localStorage.setItem('contextforge_api_key', 'your-token')
-function getApiHeaders() {
-  let token = null;
-  try {
-    token = localStorage.getItem('contextforge_api_key');
-  } catch {
-    token = null;
-  }
-  return token ? { Authorization: `Bearer ${token}` } : {};
-}
-
-// ─── EVENT DELEGATION ────────────────────────────────────────
-function _bindEvents() {
+// ─── EVENTS ──────────────────────────────────────────────────
+function bindEvents() {
   document.querySelectorAll('.nav-item[data-page]').forEach(item => {
     item.addEventListener('click', () => navigateTo(item.dataset.page));
-  });
-
-  document.querySelectorAll('[data-action="toggle-sidebar"]').forEach(btn => {
-    btn.addEventListener('click', toggleSidebar);
   });
 
   document.querySelectorAll('.time-range-btn[data-range]').forEach(btn => {
@@ -472,70 +467,59 @@ function _bindEvents() {
   });
 
   document.addEventListener('click', e => {
+    const copyBtn = e.target.closest('[data-copy]');
+    if (copyBtn) {
+      copyToClipboard(copyBtn.dataset.copy, copyBtn);
+      return;
+    }
+
     const actionEl = e.target.closest('[data-action]');
     if (!actionEl) return;
-    const action = actionEl.dataset.action;
-
-    switch (action) {
+    switch (actionEl.dataset.action) {
+      case 'toggle-sidebar': toggleSidebar(); break;
+      case 'goto-requests': navigateTo('requests'); break;
       case 'export-csv': handleExportCSV(); break;
       case 'clear-cache': handleClearCache(); break;
       case 'evaluate-threshold': handleEvaluateThreshold(); break;
       case 'toggle-live-refresh': toggleLiveRefresh(); break;
-      case 'close-modal': hideModal(actionEl.closest('.modal-overlay')?.id); break;
+      case 'close-modal':
       case 'cancel-modal': hideModal(actionEl.closest('.modal-overlay')?.id); break;
     }
   });
 
-  const filterSearch = document.getElementById('req-search');
-  const filterModel = document.getElementById('filter-model');
-  const filterStatus = document.getElementById('filter-status');
-  const filterTier = document.getElementById('tier-filter');
+  // Escape closes the dialog — expected of anything modal.
+  document.addEventListener('keydown', e => {
+    if (e.key !== 'Escape') return;
+    document.querySelectorAll('.modal-overlay.active').forEach(m => hideModal(m.id));
+  });
 
-  if (filterSearch) {
-    filterSearch.addEventListener('input', e => {
-      _searchTerm = e.target.value;
-      _currentPage = 1;
-      renderRequestsTable(_appData.requests);
-    });
-  }
-  if (filterModel) {
-    filterModel.addEventListener('change', e => {
-      _filterModel = e.target.value;
-      _currentPage = 1;
-      renderRequestsTable(_appData.requests);
-    });
-  }
-  if (filterStatus) {
-    filterStatus.addEventListener('change', e => {
-      _filterStatus = e.target.value;
-      _currentPage = 1;
-      renderRequestsTable(_appData.requests);
-    });
-  }
-  if (filterTier) {
-    filterTier.addEventListener('change', e => {
-      _filterTier = e.target.value;
-      _currentPage = 1;
-      renderRequestsTable(_appData.requests);
-    });
-  }
+  // Clicking the backdrop dismisses too.
+  document.getElementById('confirm-modal')?.addEventListener('click', e => {
+    if (e.target.id === 'confirm-modal') hideModal('confirm-modal');
+  });
 
-  const prevBtn = document.getElementById('prev-page');
-  const nextBtn = document.getElementById('next-page');
-  if (prevBtn) prevBtn.addEventListener('click', () => prevPage(_appData.requests));
-  if (nextBtn) nextBtn.addEventListener('click', () => nextPage(_appData.requests));
+  const rerender = () => { _currentPage = 1; renderRequestsTable(_appData.requests); };
+  const search = document.getElementById('req-search');
+  if (search) {
+    search.addEventListener('input', e => { _searchTerm = e.target.value; rerender(); });
+  }
+  [['filter-model', v => (_filterModel = v)],
+   ['filter-status', v => (_filterStatus = v)],
+   ['tier-filter', v => (_filterTier = v)]].forEach(([id, set]) => {
+    document.getElementById(id)?.addEventListener('change', e => { set(e.target.value); rerender(); });
+  });
+
+  document.getElementById('prev-page')?.addEventListener('click', () => prevPage(_appData.requests));
+  document.getElementById('next-page')?.addEventListener('click', () => nextPage(_appData.requests));
 }
 
-// ─── BOOT / INIT ─────────────────────────────────────────────
+// ─── BOOT ────────────────────────────────────────────────────
 async function init() {
   initSidebar();
-  _bindEvents();
-
+  bindEvents();
   await loadData();
-
   navigateTo('overview');
-
-  setTimeout(hideBoot, 400);
+  hideBoot();
 }
 
 document.addEventListener('DOMContentLoaded', init);

@@ -160,6 +160,7 @@ Every variable is documented inline in [`.env.example`](.env.example). The ones 
 | `GET` | `/v1/telemetry` | Paginated request records |
 | `GET` | `/v1/telemetry/summary` | Aggregated stats |
 | `GET` | `/v1/threshold` | Current adaptive threshold |
+| `GET` | `/v1/threshold/history` | Past threshold evaluations |
 | `POST` | `/v1/threshold/evaluate` | Trigger a threshold re-evaluation |
 | `GET` | `/v1/cache/stats` | FAISS vector count, Redis keys, active threshold |
 | `DELETE` | `/v1/cache` | Flush the cache |
@@ -179,6 +180,8 @@ Schemas and examples: [docs/API.md](docs/API.md).
 Open `http://localhost:8000/dashboard/` while the backend is running.
 
 Shows the request log, cache hit rate, model and tier distribution, latency and cost trends, routing-reason breakdown, and the adaptive threshold — all computed from real `/v1/*` responses. If it can't reach a backend it falls back to a demo dataset and says so in the header badge.
+
+It's plain HTML, CSS and JavaScript with Chart.js — no build step, no framework. Tables collapse into stacked records on narrow screens, colour is only used where it means something (a cache hit saved a call; a slow request needs a look), and every screen has a real empty state instead of a blank panel.
 
 ---
 

@@ -1,14 +1,15 @@
 /* ============================================
-   CONTEXTFORGE DASHBOARD – DEMO DATA
+   ContextForge — demo dataset
    ============================================
-   Used only when the dashboard can't reach a live backend (see
-   checkAPIConnection in ui.js). The connection badge always says
-   "Using Demo Data" in that case — this file exists so the dashboard is
-   still browsable without a running server, not to fabricate a "connected"
-   view. Real requests go through the same aggregation functions in app.js
-   (aggregateByDay, aggregateByTier, similarityHistogram) as this demo set,
-   so there's exactly one code path for turning a request list into charts,
-   whether the data is real or demo. */
+   Used only when the dashboard can't reach a backend (see
+   checkAPIConnection in ui.js), and the connection badge says "Demo data"
+   whenever it is. It exists so the UI is still browsable without a running
+   server — not to dress up a disconnected dashboard as a live one.
+
+   These records go through the same aggregation functions in app.js
+   (aggregateByDay, aggregateByReason, tierCounts, similarityScoresFromHits)
+   as real API records, so there's one code path for turning a request list
+   into charts and tables rather than two that can drift apart. */
 
 function _hoursAgo(h) {
   const dt = new Date();
@@ -18,9 +19,9 @@ function _hoursAgo(h) {
 
 // ─── DEMO REQUESTS ───────────────────────────────────────────
 // Same shape the dashboard normalizes real API records into (see
-// _normalizeApiRecord in app.js): id, timestamp, model, tokens_in/out,
+// normalizeApiRecord in app.js): id, timestamp, model, tokens_in/out,
 // latency_ms, cost, cache_status, similarity_score, tier, routing_reason.
-const MOCK_REQUESTS = [
+const DEMO_REQUESTS = [
   { id: 'req_a1b2c3d4', timestamp: _hoursAgo(0.2), model: 'gpt-4o', tokens_in: 1842, tokens_out: 512, latency_ms: 1243, cost: 0.0387, cache_status: 'MISS', similarity_score: null, tier: 'complex', routing_reason: 'complex_keyword:analyze' },
   { id: 'req_e5f6g7h8', timestamp: _hoursAgo(0.5), model: 'gpt-4o-mini', tokens_in: 423, tokens_out: 189, latency_ms: 312, cost: 0.0012, cache_status: 'HIT', similarity_score: 0.97, tier: 'simple', routing_reason: 'token_count:180<=200' },
   { id: 'req_i9j0k1l2', timestamp: _hoursAgo(0.8), model: 'claude-3.5-sonnet', tokens_in: 2105, tokens_out: 743, latency_ms: 2156, cost: 0.0521, cache_status: 'MISS', similarity_score: null, tier: 'complex', routing_reason: 'token_count:2105>=500' },
@@ -48,7 +49,7 @@ const MOCK_REQUESTS = [
 ];
 
 // ─── DEMO SUMMARY ────────────────────────────────────────────
-const MOCK_SUMMARY = {
+const DEMO_SUMMARY = {
   total_requests: 23,
   cache_hit_rate: 43.5,
   avg_latency_ms: 1051,
@@ -57,16 +58,16 @@ const MOCK_SUMMARY = {
 
 // ─── DEMO CACHE STATS ────────────────────────────────────────
 // Mirrors exactly what GET /v1/cache/stats returns for real — nothing more.
-const MOCK_CACHE_STATS = {
+const DEMO_CACHE_STATS = {
   total_vectors: 23,
   redis_keys: 21,
   similarity_threshold: 0.92,
 };
 
 // ─── FIELD ENRICHMENT ────────────────────────────────────────
-// Gives every demo record the same field names normalizeRequest() uses for
-// real API records, so table/chart code never has to branch on data source.
-MOCK_REQUESTS.forEach(r => {
+// Gives every demo record the same field names normalizeApiRecord() produces
+// for real API records, so table and chart code never branches on the source.
+DEMO_REQUESTS.forEach(r => {
   r.request_id = r.id;
   r.model_used = r.model;
   r.cache_hit = r.cache_status === 'HIT';

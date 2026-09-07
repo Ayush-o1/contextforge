@@ -212,3 +212,35 @@ class TestThresholdEndpoints:
         assert "cache_hit_rate" in data
         assert "evaluated_at" in data
         assert isinstance(data["threshold"], float)
+
+    def test_history_endpoint_empty_before_any_evaluation(self, endpoint_client):
+        """History starts empty rather than erroring — the dashboard renders
+        an empty state from this."""
+        resp = endpoint_client.get("/v1/threshold/history")
+        assert resp.status_code == 200
+        assert resp.json()["records"] == []
+
+    def test_history_endpoint_returns_evaluations_newest_first(self, endpoint_client):
+        """Each evaluation is recorded and returned newest-first."""
+        endpoint_client.post("/v1/threshold/evaluate")
+        endpoint_client.post("/v1/threshold/evaluate")
+
+        resp = endpoint_client.get("/v1/threshold/history")
+        assert resp.status_code == 200
+        records = resp.json()["records"]
+
+        assert len(records) == 2
+        assert set(records[0]) == {"threshold", "cache_hit_rate", "evaluated_at"}
+        assert records[0]["evaluated_at"] >= records[1]["evaluated_at"]
+
+    def test_history_endpoint_respects_limit(self, endpoint_client):
+        for _ in range(3):
+            endpoint_client.post("/v1/threshold/evaluate")
+
+        resp = endpoint_client.get("/v1/threshold/history?limit=2")
+        assert resp.status_code == 200
+        assert len(resp.json()["records"]) == 2
+
+    def test_history_endpoint_rejects_bad_limit(self, endpoint_client):
+        assert endpoint_client.get("/v1/threshold/history?limit=0").status_code == 422
+        assert endpoint_client.get("/v1/threshold/history?limit=9999").status_code == 422

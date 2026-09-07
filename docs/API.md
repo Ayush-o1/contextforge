@@ -33,6 +33,7 @@ using one of the configured tokens. A missing or invalid token returns `401` wit
 | `GET` | `/v1/telemetry` | Paginated telemetry records |
 | `GET` | `/v1/telemetry/summary` | Aggregated telemetry statistics |
 | `GET` | `/v1/threshold` | Current adaptive threshold info |
+| `GET` | `/v1/threshold/history` | Past threshold evaluations |
 | `POST` | `/v1/threshold/evaluate` | Trigger threshold evaluation |
 | `GET` | `/v1/cache/stats` | Cache statistics |
 | `DELETE` | `/v1/cache` | Flush entire cache |
@@ -226,6 +227,30 @@ Returns the current adaptive similarity threshold and its metadata.
   "last_evaluated_at": "2026-03-27T12:00:00"
 }
 ```
+
+---
+
+## `GET /v1/threshold/history`
+
+Past evaluations, newest first — how the threshold has moved and what the hit rate was each time.
+
+### Query Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `limit` | int | 20 | Rows to return (1–200) |
+
+### Response
+
+```json
+{
+  "records": [
+    { "threshold": 0.93, "cache_hit_rate": 0.65, "evaluated_at": "2026-03-27T12:00:00+00:00" }
+  ]
+}
+```
+
+Empty (`{"records": []}`) until the first evaluation runs.
 
 ---
 

@@ -140,11 +140,15 @@ docs/dashboard/
     └── app.js       # navigation, data loading + aggregation, button handlers
 ```
 
-Pages: **Overview** (summary cards, trends, recent requests), **Requests** (filterable log + CSV export), **Cache** (FAISS/Redis stats, similarity distribution, recent hits), **Router** (tier split, routing reasons), **Telemetry** (cost/latency/hit-rate trends), **Threshold** (current vs. baseline, manual evaluate).
+Pages: **Overview** (summary cards, trends, recent requests), **Requests** (filterable log + CSV export), **Cache** (FAISS/Redis stats, similarity distribution, recent hits), **Router** (tier split, routing reasons), **Telemetry** (cost/latency/hit-rate trends), **Threshold** (current vs. baseline, evaluation history, manual evaluate).
 
-Uses `GET /health`, `GET /v1/telemetry`, `GET /v1/telemetry/summary`, `GET /v1/cache/stats`, `GET /v1/threshold`, `POST /v1/threshold/evaluate`, `DELETE /v1/cache`. If `CONTEXTFORGE_API_KEYS` is set, all of them except `/health` need a bearer token — set one with `localStorage.setItem('contextforge_api_key', 'your-token')`.
+On narrow screens the tables re-render as stacked records rather than scrolling sideways — the cache result and latency of a request are the point of the row, and they shouldn't be the columns you have to drag to reach.
 
-Three decisions worth knowing about:
+Uses `GET /health`, `GET /v1/telemetry`, `GET /v1/telemetry/summary`, `GET /v1/cache/stats`, `GET /v1/threshold`, `GET /v1/threshold/history`, `POST /v1/threshold/evaluate`, `DELETE /v1/cache`. If `CONTEXTFORGE_API_KEYS` is set, all of them except `/health` need a bearer token — set one with `localStorage.setItem('contextforge_api_key', 'your-token')`.
+
+Decisions worth knowing about:
+
+**Colour carries meaning, or it isn't used.** An earlier version painted every latency green and every cache `MISS` red, which made a miss — the normal path — look like an error and left colour carrying no signal at all. Now the default state is neutral: cache *hits* are green because they saved a call, latency only colours once it's slow enough to care about, and red is reserved for destructive actions. Tiers use a neutral/violet pair rather than green/red, since "complex" is a routing outcome, not a failure.
 
 **One aggregation path for real and demo data.** `aggregateByDay()`, `aggregateByReason()`, `tierCounts()`, and `similarityScoresFromHits()` in `app.js` run over a plain list of requests, whichever source it came from. The demo dataset can't drift from what the real dashboard shows, because there's no second code path for it to drift in.
 

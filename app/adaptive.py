@@ -123,6 +123,16 @@ class ThresholdManager:
             "last_evaluated_at": last_evaluated_at,
         }
 
+    def get_history(self, limit: int = 20) -> list[dict[str, Any]]:
+        """Return recent threshold evaluations, newest first."""
+        with self._conn() as conn:
+            rows = conn.execute(
+                "SELECT threshold, cache_hit_rate, evaluated_at "
+                "FROM threshold_history ORDER BY id DESC LIMIT ?",
+                (limit,),
+            ).fetchall()
+        return [dict(r) for r in rows]
+
     # ── Private helpers ───────────────────────────────────────────────
 
     def _compute_hit_rate(self, window: int) -> float:

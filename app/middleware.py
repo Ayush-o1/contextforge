@@ -23,9 +23,17 @@ class TelemetryMiddleware(BaseHTTPMiddleware):
         response = await call_next(request)
 
         latency_ms = (time.monotonic() - start) * 1000
-
-        # Pull metadata set by route handler via request.state
         state = request.state
+
+        # The handler sets model_requested before anything else can fail, so
+        # its absence means the request never reached the proxy pipeline at
+        # all — a 422 from body validation, or a 404 on some other /v1/chat*
+        # path. Recording those inflates total_requests and, because they
+        # look like cache misses, drags the adaptive threshold down off the
+        # back of traffic that was never proxied.
+        if not hasattr(state, "model_requested"):
+            return response
+
         telemetry.write_record({
             "request_id": request_id,
             "timestamp": datetime.now(timezone.utc).isoformat(),

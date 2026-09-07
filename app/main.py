@@ -7,7 +7,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 import structlog
-from fastapi import Depends, FastAPI, Request
+from fastapi import Depends, FastAPI, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -326,6 +326,13 @@ async def get_threshold(request: Request):
     settings: Settings = request.app.state.settings
     manager: ThresholdManager = request.app.state.threshold_manager
     return manager.get_info(settings)
+
+
+@app.get("/v1/threshold/history", dependencies=[Depends(require_api_key)])
+async def get_threshold_history(request: Request, limit: int = Query(default=20, ge=1, le=200)):
+    """Return recent adaptive-threshold evaluations, newest first."""
+    manager: ThresholdManager = request.app.state.threshold_manager
+    return {"records": manager.get_history(limit)}
 
 
 @app.post("/v1/threshold/evaluate", dependencies=[Depends(require_api_key)])

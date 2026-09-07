@@ -3,134 +3,139 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="description" content="ContextForge Dashboard – Real-time monitoring for LLM proxy, cache, and smart routing.">
-  <title>ContextForge Dashboard</title>
+  <meta name="description" content="ContextForge — operator console for the LLM proxy: request log, cache, routing, and telemetry.">
+  <title>ContextForge</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;450;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
-  <!-- ═══ BOOT SCREEN ═══ -->
+  <!-- ═══ BOOT ═══ -->
   <div id="boot-screen" class="boot-screen">
     <div class="boot-logo"></div>
-    <div class="boot-text">Loading ContextForge…</div>
+    <div class="boot-text">Connecting to ContextForge…</div>
   </div>
 
-  <!-- ═══ MOBILE OVERLAY ═══ -->
   <div id="mobile-overlay" class="mobile-overlay"></div>
 
-  <!-- ═══ DASHBOARD SHELL ═══ -->
   <div class="dashboard">
 
     <!-- ─── SIDEBAR ─── -->
     <aside id="sidebar" class="sidebar">
       <div class="sidebar-brand">
-        <div class="sidebar-brand-icon">CF</div>
+        <div class="sidebar-brand-icon" aria-hidden="true">CF</div>
         <span class="sidebar-brand-text">ContextForge</span>
       </div>
 
-      <nav class="sidebar-nav">
+      <nav class="sidebar-nav" aria-label="Sections">
         <div class="sidebar-section-label">Monitor</div>
-        <div class="nav-item active" data-page="overview">
-          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+        <button type="button" class="nav-item active" data-page="overview" aria-current="page">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
           <span class="nav-item-text">Overview</span>
-        </div>
-        <div class="nav-item" data-page="requests">
-          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+        </button>
+        <button type="button" class="nav-item" data-page="requests">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
           <span class="nav-item-text">Requests</span>
-        </div>
-        <div class="nav-item" data-page="cache">
-          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>
+        </button>
+        <button type="button" class="nav-item" data-page="cache">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>
           <span class="nav-item-text">Cache</span>
-        </div>
+        </button>
 
-        <div class="sidebar-section-label">Intelligence</div>
-        <div class="nav-item" data-page="router">
-          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        <div class="sidebar-section-label">Routing</div>
+        <button type="button" class="nav-item" data-page="router">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg>
           <span class="nav-item-text">Router</span>
-        </div>
-        <div class="nav-item" data-page="telemetry">
-          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+        </button>
+        <button type="button" class="nav-item" data-page="telemetry">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
           <span class="nav-item-text">Telemetry</span>
-        </div>
+        </button>
 
         <div class="sidebar-section-label">System</div>
-        <div class="nav-item" data-page="threshold">
-          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg>
+        <button type="button" class="nav-item" data-page="threshold">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg>
           <span class="nav-item-text">Threshold</span>
-        </div>
+        </button>
       </nav>
 
       <div class="sidebar-footer">
-        <button id="sidebar-toggle" class="sidebar-toggle" data-action="toggle-sidebar" title="Collapse sidebar">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="11 17 6 12 11 7"/><polyline points="18 17 13 12 18 7"/></svg>
+        <button type="button" id="sidebar-toggle" class="sidebar-toggle" data-action="toggle-sidebar" aria-label="Collapse sidebar">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="11 17 6 12 11 7"/><polyline points="18 17 13 12 18 7"/></svg>
         </button>
       </div>
     </aside>
 
-    <!-- ─── MAIN AREA ─── -->
     <div class="main-area">
 
       <!-- ─── HEADER ─── -->
       <header class="header">
         <div class="header-left">
-          <button class="mobile-menu-btn" data-action="toggle-sidebar">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+          <button type="button" class="mobile-menu-btn" data-action="toggle-sidebar" aria-label="Open navigation">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
           </button>
           <h1 id="header-title" class="header-title">Overview</h1>
         </div>
         <div class="header-right">
-          <div class="time-range-group">
-            <button class="time-range-btn" data-range="1h">1H</button>
-            <button class="time-range-btn" data-range="6h">6H</button>
-            <button class="time-range-btn" data-range="24h">24H</button>
-            <button class="time-range-btn active" data-range="7d">7D</button>
-            <button class="time-range-btn" data-range="30d">30D</button>
+          <div class="time-range-group" role="group" aria-label="Time range">
+            <button type="button" class="time-range-btn" data-range="1h">1H</button>
+            <button type="button" class="time-range-btn" data-range="6h">6H</button>
+            <button type="button" class="time-range-btn" data-range="24h">24H</button>
+            <button type="button" class="time-range-btn active" data-range="7d">7D</button>
+            <button type="button" class="time-range-btn" data-range="30d">30D</button>
           </div>
-          <button id="live-refresh-btn" class="live-refresh-toggle" data-action="toggle-live-refresh" title="Auto-refresh every 10 seconds">
-            <span class="live-refresh-dot"></span>
+          <button type="button" id="live-refresh-btn" class="live-refresh-toggle" data-action="toggle-live-refresh" aria-pressed="false" title="Refresh every 10 seconds">
+            <span class="live-refresh-dot" aria-hidden="true"></span>
             <span class="live-refresh-label">Live</span>
           </button>
-          <div id="conn-badge" class="connection-badge">
-            <span class="connection-dot"></span>
-            <span class="connection-label">Checking…</span>
+          <div id="conn-badge" class="connection-badge" role="status">
+            <span class="connection-dot" aria-hidden="true"></span>
+            <span class="connection-label">Connecting…</span>
           </div>
         </div>
       </header>
 
-      <!-- ─── PAGE CONTAINER ─── -->
       <div class="page-container">
 
-        <!-- ════════════════════════════════════════════ -->
-        <!--  OVERVIEW PAGE                              -->
-        <!-- ════════════════════════════════════════════ -->
-        <section id="page-overview" class="page active">
+        <!-- ══ OVERVIEW ══ -->
+        <section id="page-overview" class="page active" aria-labelledby="header-title">
           <div class="page-header">
-            <h2 class="page-title">Dashboard Overview</h2>
-            <p class="page-subtitle">Real-time metrics for your LLM proxy infrastructure</p>
+            <p class="page-subtitle">Traffic through the proxy — what it cost, how much the cache saved, and where time went.</p>
           </div>
 
           <div class="metrics-grid">
             <div class="metric-card">
-              <div class="metric-icon blue">📊</div>
-              <div class="metric-label">Total Requests</div>
-              <div class="metric-value" id="metric-total-requests">0</div>
+              <div class="metric-label">
+                <svg class="metric-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 4v16h16"/><path d="M8 16V10"/><path d="M12 16V6"/><path d="M16 16v-4"/></svg>
+                Requests
+              </div>
+              <div class="metric-value" id="metric-total-requests">—</div>
+              <div class="metric-hint">all time</div>
             </div>
             <div class="metric-card">
-              <div class="metric-icon green">🎯</div>
-              <div class="metric-label">Cache Hit Rate</div>
-              <div class="metric-value" id="metric-hit-rate">0%</div>
+              <div class="metric-label">
+                <svg class="metric-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4"/></svg>
+                Cache hit rate
+              </div>
+              <div class="metric-value" id="metric-hit-rate">—</div>
+              <div class="metric-hint">served without an upstream call</div>
             </div>
             <div class="metric-card">
-              <div class="metric-icon orange">⚡</div>
-              <div class="metric-label">Avg Latency</div>
-              <div class="metric-value" id="metric-avg-latency">0ms</div>
+              <div class="metric-label">
+                <svg class="metric-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 14"/></svg>
+                Avg latency
+              </div>
+              <div class="metric-value" id="metric-avg-latency">—</div>
+              <div class="metric-hint">end to end</div>
             </div>
             <div class="metric-card">
-              <div class="metric-icon purple">💰</div>
-              <div class="metric-label">Total Cost</div>
-              <div class="metric-value" id="metric-total-cost">$0</div>
+              <div class="metric-label">
+                <svg class="metric-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="2" x2="12" y2="22"/><path d="M17 6H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+                Spend
+              </div>
+              <div class="metric-value" id="metric-total-cost">—</div>
+              <div class="metric-hint">estimated from token counts</div>
             </div>
           </div>
 
@@ -138,42 +143,42 @@
             <div class="chart-card">
               <div class="chart-card-header">
                 <div>
-                  <div class="chart-card-title">Requests Over Time</div>
-                  <div class="chart-card-subtitle">Daily request volume with cache breakdown</div>
+                  <div class="chart-card-title">Requests over time</div>
+                  <div class="chart-card-subtitle">Cache hits vs. upstream calls</div>
                 </div>
               </div>
               <div class="chart-wrapper">
-                <canvas id="chart-requests"></canvas>
+                <canvas id="chart-requests" role="img" aria-label="Stacked bar chart of requests per day, split into cache hits and upstream calls"></canvas>
               </div>
             </div>
             <div class="chart-card">
               <div class="chart-card-header">
                 <div>
-                  <div class="chart-card-title">Model Distribution</div>
-                  <div class="chart-card-subtitle">Requests by LLM model</div>
+                  <div class="chart-card-title">Models used</div>
+                  <div class="chart-card-subtitle">Where requests were actually sent</div>
                 </div>
               </div>
               <div class="chart-wrapper">
-                <canvas id="chart-models"></canvas>
+                <canvas id="chart-models" role="img" aria-label="Doughnut chart showing the share of requests per model"></canvas>
               </div>
             </div>
           </div>
 
           <div class="table-card">
             <div class="table-card-header">
-              <div class="table-card-title">Recent Requests</div>
-              <button class="btn btn-ghost btn-sm" data-page="requests" onclick="navigateTo('requests')">View All →</button>
+              <div class="table-card-title">Recent requests</div>
+              <button type="button" class="btn btn-ghost btn-sm" data-action="goto-requests">View all</button>
             </div>
             <div class="table-wrapper">
               <table>
                 <thead>
                   <tr>
-                    <th>Request ID</th>
-                    <th>Time</th>
-                    <th>Model</th>
-                    <th>Latency</th>
-                    <th>Cost</th>
-                    <th>Cache</th>
+                    <th scope="col">Request ID</th>
+                    <th scope="col">Time</th>
+                    <th scope="col">Model</th>
+                    <th scope="col">Latency</th>
+                    <th scope="col">Cost</th>
+                    <th scope="col">Cache</th>
                   </tr>
                 </thead>
                 <tbody id="recent-tbody"></tbody>
@@ -182,30 +187,32 @@
           </div>
         </section>
 
-        <!-- ════════════════════════════════════════════ -->
-        <!--  REQUESTS PAGE                              -->
-        <!-- ════════════════════════════════════════════ -->
+        <!-- ══ REQUESTS ══ -->
         <section id="page-requests" class="page">
-          <div class="page-header flex justify-between items-center">
-            <div>
-              <h2 class="page-title">Request Log</h2>
-              <p class="page-subtitle">Browse and filter all proxied requests</p>
-            </div>
-            <button id="export-btn" class="btn btn-secondary btn-sm" data-action="export-csv">⬇ Export CSV</button>
+          <div class="page-header">
+            <p class="page-subtitle">Every request the proxy handled, newest first.</p>
+            <button type="button" id="export-btn" class="btn btn-secondary btn-sm" data-action="export-csv">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+              Export CSV
+            </button>
           </div>
 
           <div class="filter-bar">
-            <input id="req-search" class="input" type="text" placeholder="Search by ID or model…">
+            <label class="sr-only" for="req-search">Search requests</label>
+            <input id="req-search" class="input" type="search" placeholder="Search by ID or model">
+            <label class="sr-only" for="filter-model">Filter by model</label>
             <select id="filter-model" class="select-input">
-              <option value="">All Models</option>
+              <option value="">All models</option>
             </select>
+            <label class="sr-only" for="filter-status">Filter by cache status</label>
             <select id="filter-status" class="select-input">
-              <option value="">All Cache Status</option>
-              <option value="HIT">Cache HIT</option>
-              <option value="MISS">Cache MISS</option>
+              <option value="">All cache results</option>
+              <option value="HIT">Cache hits</option>
+              <option value="MISS">Cache misses</option>
             </select>
+            <label class="sr-only" for="tier-filter">Filter by tier</label>
             <select id="tier-filter" class="select-input">
-              <option value="">All Tiers</option>
+              <option value="">All tiers</option>
               <option value="simple">Simple</option>
               <option value="complex">Complex</option>
             </select>
@@ -216,14 +223,14 @@
               <table>
                 <thead>
                   <tr>
-                    <th>Request ID</th>
-                    <th>Time</th>
-                    <th>Model</th>
-                    <th>Tier</th>
-                    <th>Tokens (In/Out)</th>
-                    <th>Latency</th>
-                    <th>Cost</th>
-                    <th>Cache</th>
+                    <th scope="col">Request ID</th>
+                    <th scope="col">Time</th>
+                    <th scope="col">Model</th>
+                    <th scope="col">Tier</th>
+                    <th scope="col">Tokens</th>
+                    <th scope="col">Latency</th>
+                    <th scope="col">Cost</th>
+                    <th scope="col">Cache</th>
                   </tr>
                 </thead>
                 <tbody id="req-tbody"></tbody>
@@ -232,76 +239,80 @@
             <div class="pagination">
               <span id="page-info" class="pagination-info">—</span>
               <div class="pagination-buttons">
-                <button id="prev-page" class="btn btn-secondary btn-sm" disabled>← Prev</button>
-                <button id="next-page" class="btn btn-secondary btn-sm" disabled>Next →</button>
+                <button type="button" id="prev-page" class="btn btn-secondary btn-sm" disabled>Previous</button>
+                <button type="button" id="next-page" class="btn btn-secondary btn-sm" disabled>Next</button>
               </div>
             </div>
           </div>
         </section>
 
-        <!-- ════════════════════════════════════════════ -->
-        <!--  CACHE PAGE                                 -->
-        <!-- ════════════════════════════════════════════ -->
+        <!-- ══ CACHE ══ -->
         <section id="page-cache" class="page">
-          <div class="page-header flex justify-between items-center">
-            <div>
-              <h2 class="page-title">Cache Manager</h2>
-              <p class="page-subtitle">Semantic cache performance and entries</p>
-            </div>
-            <button id="clear-cache-btn" class="btn btn-danger btn-sm" data-action="clear-cache">🗑 Clear Cache</button>
+          <div class="page-header">
+            <p class="page-subtitle">Prompts are embedded locally and matched by meaning, so a reworded question can reuse an earlier answer.</p>
+            <button type="button" id="clear-cache-btn" class="btn btn-danger btn-sm" data-action="clear-cache">Clear cache</button>
           </div>
 
           <div class="metrics-grid">
             <div class="metric-card">
-              <div class="metric-icon cyan">📦</div>
-              <div class="metric-label">Vectors (FAISS)</div>
+              <div class="metric-label">
+                <svg class="metric-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2 3 7l9 5 9-5-9-5Z"/><path d="m3 17 9 5 9-5"/><path d="m3 12 9 5 9-5"/></svg>
+                Vectors
+              </div>
               <div class="metric-value" id="cache-total-entries">—</div>
+              <div class="metric-hint">in the FAISS index</div>
             </div>
             <div class="metric-card">
-              <div class="metric-icon blue">🗝️</div>
-              <div class="metric-label">Redis Keys</div>
+              <div class="metric-label">
+                <svg class="metric-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="7.5" cy="15.5" r="4.5"/><path d="m10.7 12.3 8.8-8.8"/><path d="m17 6 2.5 2.5"/></svg>
+                Stored responses
+              </div>
               <div class="metric-value" id="cache-redis-keys">—</div>
+              <div class="metric-hint">keys in Redis</div>
             </div>
             <div class="metric-card">
-              <div class="metric-icon green">🎯</div>
-              <div class="metric-label">Hit Rate</div>
+              <div class="metric-label">
+                <svg class="metric-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4"/></svg>
+                Hit rate
+              </div>
               <div class="metric-value" id="cache-hit-rate">—</div>
+              <div class="metric-hint">across all requests</div>
             </div>
             <div class="metric-card">
-              <div class="metric-icon purple">📐</div>
-              <div class="metric-label">Active Threshold</div>
+              <div class="metric-label">
+                <svg class="metric-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/></svg>
+                Match threshold
+              </div>
               <div class="metric-value" id="cache-threshold">—</div>
+              <div class="metric-hint">similarity needed for a hit</div>
             </div>
           </div>
 
-          <div class="charts-grid">
-            <div class="chart-card">
-              <div class="chart-card-header">
-                <div>
-                  <div class="chart-card-title">Similarity Distribution</div>
-                  <div class="chart-card-subtitle">Score distribution of recent cache hits (avg: <span id="cache-avg-sim">—</span>)</div>
-                </div>
+          <div class="chart-card">
+            <div class="chart-card-header">
+              <div>
+                <div class="chart-card-title">How close were the matches?</div>
+                <div class="chart-card-subtitle">Similarity of recent cache hits — average <span id="cache-avg-sim">—</span></div>
               </div>
-              <div class="chart-wrapper">
-                <canvas id="chart-similarity"></canvas>
-              </div>
+            </div>
+            <div class="chart-wrapper">
+              <canvas id="chart-similarity" role="img" aria-label="Bar chart grouping recent cache hits by similarity score"></canvas>
             </div>
           </div>
 
           <div class="table-card">
             <div class="table-card-header">
-              <div class="table-card-title">Recent Cache Hits</div>
-              <span class="text-muted" style="font-size:0.78rem">The backend never stores prompt text — only response hashes and vectors — so there's no entry list to browse, just what was recently served from cache</span>
+              <div class="table-card-title">Recent cache hits</div>
+              <p class="card-meta">Only response hashes and vectors are stored — never prompt text — so there's no entry list to browse.</p>
             </div>
             <div class="table-wrapper">
               <table>
                 <thead>
                   <tr>
-                    <th>Request ID</th>
-                    <th>Model</th>
-                    <th>Similarity</th>
-                    <th>Time</th>
-                    <th>Cost Saved</th>
+                    <th scope="col">Request ID</th>
+                    <th scope="col">Model</th>
+                    <th scope="col">Similarity</th>
+                    <th scope="col">Time</th>
                   </tr>
                 </thead>
                 <tbody id="cache-tbody"></tbody>
@@ -310,165 +321,174 @@
           </div>
         </section>
 
-        <!-- ════════════════════════════════════════════ -->
-        <!--  ROUTER PAGE                                -->
-        <!-- ════════════════════════════════════════════ -->
+        <!-- ══ ROUTER ══ -->
         <section id="page-router" class="page">
           <div class="page-header">
-            <h2 class="page-title">Smart Router</h2>
-            <p class="page-subtitle">Rule-based classifier — token count + keyword rules pick simple vs. complex per request (see config/routing_rules.yaml)</p>
+            <p class="page-subtitle">Each prompt is classified by token count and keywords, then sent to a cheaper or a stronger model.</p>
           </div>
 
           <div class="accuracy-display">
             <div class="progress-ring-container">
-              <svg class="progress-ring" width="128" height="128">
-                <circle class="progress-ring-bg" cx="64" cy="64" r="54"/>
-                <circle id="accuracy-ring-fill" class="progress-ring-fill" cx="64" cy="64" r="54"/>
+              <svg class="progress-ring" width="132" height="132" aria-hidden="true">
+                <circle class="progress-ring-bg" cx="66" cy="66" r="56"/>
+                <circle id="accuracy-ring-fill" class="progress-ring-fill" cx="66" cy="66" r="56"/>
               </svg>
               <div id="accuracy-ring-label" class="progress-ring-label">—</div>
-              <div class="progress-ring-caption">routed to complex tier</div>
+              <div class="progress-ring-caption">complex</div>
             </div>
             <div class="accuracy-stats">
               <div class="stat-inline">
-                <span class="stat-inline-label">Total Routed</span>
+                <span class="stat-inline-label">Total routed</span>
                 <span id="router-total-requests" class="stat-inline-value">—</span>
               </div>
               <div class="stat-inline">
-                <span class="stat-inline-label">Simple Tier</span>
+                <span class="stat-inline-label">Simple tier</span>
                 <span id="router-simple-count" class="stat-inline-value">—</span>
               </div>
               <div class="stat-inline">
-                <span class="stat-inline-label">Complex Tier</span>
+                <span class="stat-inline-label">Complex tier</span>
                 <span id="router-complex-count" class="stat-inline-value">—</span>
               </div>
             </div>
           </div>
 
-          <p class="text-muted" style="font-size:0.8rem;margin:-8px 0 20px">
-            Classification <strong>accuracy</strong> needs ground-truth labels, which live traffic doesn't have —
-            it's measured offline against a labeled 1,000-prompt set instead (~88% last run; see
-            <code>benchmarks/run_benchmark.py</code>). What's shown here is the real tier split and reasons
-            from recent traffic.
-          </p>
+          <div class="note">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+            <span><strong>Why there's no accuracy number here.</strong> Judging a routing decision needs a known-correct answer, and live traffic doesn't come with one. Accuracy is measured offline instead, against a labelled 1,000-prompt set — about 88% on the last run (<code>benchmarks/run_benchmark.py</code>). What's below is the real split from recent traffic.</span>
+          </div>
 
           <div class="charts-grid">
             <div class="chart-card">
               <div class="chart-card-header">
                 <div>
-                  <div class="chart-card-title">Tier Split</div>
-                  <div class="chart-card-subtitle">Requests classified simple vs. complex</div>
+                  <div class="chart-card-title">Tier split</div>
+                  <div class="chart-card-subtitle">Simple vs. complex</div>
                 </div>
               </div>
               <div class="chart-wrapper">
-                <canvas id="router-models-chart"></canvas>
+                <canvas id="router-models-chart" role="img" aria-label="Doughnut chart of requests split between the simple and complex tiers"></canvas>
+              </div>
+            </div>
+            <div class="table-card">
+              <div class="table-card-header">
+                <div class="table-card-title">Why each tier was chosen</div>
+              </div>
+              <div class="table-wrapper">
+                <table>
+                  <thead>
+                    <tr>
+                      <th scope="col">Reason</th>
+                      <th scope="col">Tier</th>
+                      <th scope="col">Requests</th>
+                      <th scope="col">Avg latency</th>
+                    </tr>
+                  </thead>
+                  <tbody id="router-tbody"></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ══ TELEMETRY ══ -->
+        <section id="page-telemetry" class="page">
+          <div class="page-header">
+            <p class="page-subtitle">Trends over the selected time range.</p>
+          </div>
+
+          <div class="charts-grid">
+            <div class="chart-card">
+              <div class="chart-card-header">
+                <div>
+                  <div class="chart-card-title">Spend</div>
+                  <div class="chart-card-subtitle">Estimated cost per day</div>
+                </div>
+              </div>
+              <div class="chart-wrapper">
+                <canvas id="chart-cost" role="img" aria-label="Line chart of estimated spend per day"></canvas>
+              </div>
+            </div>
+            <div class="chart-card">
+              <div class="chart-card-header">
+                <div>
+                  <div class="chart-card-title">Latency</div>
+                  <div class="chart-card-subtitle">Average per day</div>
+                </div>
+              </div>
+              <div class="chart-wrapper">
+                <canvas id="chart-latency" role="img" aria-label="Line chart of average latency per day"></canvas>
               </div>
             </div>
           </div>
 
+          <div class="chart-card">
+            <div class="chart-card-header">
+              <div>
+                <div class="chart-card-title">Cache hit rate</div>
+                <div class="chart-card-subtitle">Share of requests served from cache</div>
+              </div>
+            </div>
+            <div class="chart-wrapper">
+              <canvas id="chart-hitrate" role="img" aria-label="Line chart of cache hit rate per day"></canvas>
+            </div>
+          </div>
+        </section>
+
+        <!-- ══ THRESHOLD ══ -->
+        <section id="page-threshold" class="page">
+          <div class="page-header">
+            <p class="page-subtitle">How close a match has to be before a cached answer is reused. It tunes itself from the hit rate.</p>
+            <button type="button" id="btn-evaluate-threshold" class="btn btn-primary btn-sm" data-action="evaluate-threshold">Run evaluation</button>
+          </div>
+
+          <div class="metrics-grid">
+            <div class="metric-card">
+              <div class="metric-label">
+                <svg class="metric-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/></svg>
+                In effect now
+              </div>
+              <div class="metric-value" id="threshold-current">—</div>
+              <div class="metric-hint">similarity required for a hit</div>
+            </div>
+            <div class="metric-card">
+              <div class="metric-label">
+                <svg class="metric-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="5" r="3"/><line x1="12" y1="8" x2="12" y2="21"/><path d="M5 12H2a10 10 0 0 0 20 0h-3"/></svg>
+                Configured baseline
+              </div>
+              <div class="metric-value" id="threshold-baseline">—</div>
+              <div class="metric-hint">from SIMILARITY_THRESHOLD</div>
+            </div>
+            <div class="metric-card">
+              <div class="metric-label">
+                <svg class="metric-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 14"/></svg>
+                Last evaluated
+              </div>
+              <div class="metric-value" id="threshold-evaluated" style="font-size:17px">—</div>
+              <div class="metric-hint">runs on demand</div>
+            </div>
+          </div>
+
+          <div class="note">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+            <span>Above a <strong>60%</strong> hit rate the threshold tightens by 0.01, so only closer matches count. Below <strong>20%</strong> it loosens. In between it stays put.</span>
+          </div>
+
           <div class="table-card">
             <div class="table-card-header">
-              <div class="table-card-title">Routing Reasons</div>
-              <span class="text-muted" style="font-size:0.78rem">Why the classifier picked each tier — see ModelRouter._classify</span>
+              <div class="table-card-title">Evaluation history</div>
             </div>
             <div class="table-wrapper">
               <table>
                 <thead>
                   <tr>
-                    <th>Reason</th>
-                    <th>Tier</th>
-                    <th>Requests</th>
-                    <th>Avg Latency</th>
+                    <th scope="col">When</th>
+                    <th scope="col">Threshold</th>
+                    <th scope="col">Hit rate at the time</th>
                   </tr>
                 </thead>
-                <tbody id="router-tbody"></tbody>
+                <tbody id="threshold-tbody"></tbody>
               </table>
             </div>
-          </div>
-        </section>
-
-        <!-- ════════════════════════════════════════════ -->
-        <!--  TELEMETRY PAGE                             -->
-        <!-- ════════════════════════════════════════════ -->
-        <section id="page-telemetry" class="page">
-          <div class="page-header">
-            <h2 class="page-title">Telemetry</h2>
-            <p class="page-subtitle">Cost, latency, and cache performance trends</p>
-          </div>
-
-          <div class="charts-grid">
-            <div class="chart-card">
-              <div class="chart-card-header">
-                <div>
-                  <div class="chart-card-title">Daily Cost</div>
-                  <div class="chart-card-subtitle">API spend over time</div>
-                </div>
-              </div>
-              <div class="chart-wrapper">
-                <canvas id="chart-cost"></canvas>
-              </div>
-            </div>
-            <div class="chart-card">
-              <div class="chart-card-header">
-                <div>
-                  <div class="chart-card-title">Average Latency</div>
-                  <div class="chart-card-subtitle">Response time trends</div>
-                </div>
-              </div>
-              <div class="chart-wrapper">
-                <canvas id="chart-latency"></canvas>
-              </div>
-            </div>
-          </div>
-
-          <div class="charts-grid" style="margin-top: 0">
-            <div class="chart-card">
-              <div class="chart-card-header">
-                <div>
-                  <div class="chart-card-title">Cache Hit Rate</div>
-                  <div class="chart-card-subtitle">Cache effectiveness over time</div>
-                </div>
-              </div>
-              <div class="chart-wrapper">
-                <canvas id="chart-hitrate"></canvas>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        <!-- ════════════════════════════════════════════ -->
-        <!--  THRESHOLD PAGE                             -->
-        <!-- ════════════════════════════════════════════ -->
-        <section id="page-threshold" class="page">
-          <div class="page-header">
-            <h2 class="page-title">Adaptive Threshold</h2>
-            <p class="page-subtitle">The similarity score required for a cache hit auto-tunes from observed hit rates (see app/adaptive.py)</p>
-          </div>
-
-          <div class="metrics-grid">
-            <div class="metric-card">
-              <div class="metric-icon purple">📐</div>
-              <div class="metric-label">Current Threshold</div>
-              <div class="metric-value" id="threshold-current">—</div>
-            </div>
-            <div class="metric-card">
-              <div class="metric-icon blue">⚓</div>
-              <div class="metric-label">Static Baseline</div>
-              <div class="metric-value" id="threshold-baseline">—</div>
-            </div>
-            <div class="metric-card">
-              <div class="metric-icon orange">🕒</div>
-              <div class="metric-label">Last Evaluated</div>
-              <div class="metric-value" id="threshold-evaluated" style="font-size:1.1rem">—</div>
-            </div>
-          </div>
-
-          <p class="text-muted" style="font-size:0.8rem;margin:4px 0 20px">
-            Rule: hit rate above 60% raises the threshold by 0.01 (stricter matching); below 20% lowers it
-            (looser matching); otherwise no change. Runs automatically, or trigger it here.
-          </p>
-
-          <div class="settings-actions">
-            <button id="btn-evaluate-threshold" class="btn btn-primary" data-action="evaluate-threshold">Evaluate Now</button>
           </div>
         </section>
 
@@ -476,27 +496,25 @@
     </div><!-- /main-area -->
   </div><!-- /dashboard -->
 
-  <!-- ═══ MODAL ═══ -->
+  <!-- ═══ CONFIRM DIALOG ═══ -->
   <div id="confirm-modal" class="modal-overlay">
-    <div class="modal">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title-text">
       <div class="modal-header">
-        <span class="modal-title">Confirm Action</span>
-        <button class="modal-close" data-action="close-modal">✕</button>
+        <span class="modal-title" id="modal-title-text">Clear the cache?</span>
+        <button type="button" class="modal-close" data-action="close-modal" aria-label="Close">×</button>
       </div>
       <div class="modal-body">
-        <p>Are you sure you want to clear the semantic cache? This action cannot be undone and will remove all cached embeddings and responses.</p>
+        <p>This drops every stored vector and cached response. Nothing breaks — the next requests just go upstream again and repopulate it.</p>
       </div>
       <div class="modal-footer">
-        <button class="btn btn-secondary btn-sm" data-action="cancel-modal">Cancel</button>
-        <button id="confirm-action" class="btn btn-danger btn-sm">Clear Cache</button>
+        <button type="button" class="btn btn-secondary btn-sm" data-action="cancel-modal">Cancel</button>
+        <button type="button" id="confirm-action" class="btn btn-danger btn-sm">Clear cache</button>
       </div>
     </div>
   </div>
 
-  <!-- ═══ TOAST CONTAINER ═══ -->
-  <div id="toast-container" class="toast-container"></div>
+  <div id="toast-container" class="toast-container" role="status" aria-live="polite"></div>
 
-  <!-- ═══ SCRIPTS ═══ -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
   <script src="js/data.js"></script>
   <script src="js/ui.js"></script>

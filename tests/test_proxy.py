@@ -286,3 +286,46 @@ class TestErrorPropagation:
         assert "message" in data["error"]
         assert "type" in data["error"]
         assert "code" in data["error"]
+
+
+# ──────────────────── Telemetry Recording ────────────────────────────────
+
+
+class TestTelemetryRecording:
+    """What counts as a proxied request, for telemetry purposes."""
+
+    def _count(self):
+        from app.telemetry import get_summary
+        return get_summary()["total_requests"] or 0
+
+    def test_rejected_request_is_not_recorded(self, test_client):
+        """A body that fails validation never reaches the proxy pipeline, so
+        it must not land in telemetry — phantom rows inflate total_requests
+        and, counting as cache misses, skew the adaptive threshold."""
+        before = self._count()
+
+        resp = test_client.post("/v1/chat/completions", json={"model": "gpt-3.5-turbo"})
+        assert resp.status_code == 422
+
+        assert self._count() == before
+
+    def test_unknown_chat_path_is_not_recorded(self, test_client):
+        """404s under the instrumented /v1/chat* prefix aren't proxied calls."""
+        before = self._count()
+
+        resp = test_client.get("/v1/chat/does-not-exist")
+        assert resp.status_code == 404
+
+        assert self._count() == before
+
+    def test_successful_request_is_recorded(
+        self, test_client, mock_proxy_client, chat_completion_fixture, sample_request_body
+    ):
+        """The guard must not suppress real traffic."""
+        mock_proxy_client.forward.return_value = chat_completion_fixture
+        before = self._count()
+
+        resp = test_client.post("/v1/chat/completions", json=sample_request_body)
+        assert resp.status_code == 200
+
+        assert self._count() == before + 1
